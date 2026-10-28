@@ -57,6 +57,7 @@ mv "$(basename "$GHIDRA_VERSION.zip")" ~/Downloads
 # install build tools
 sudo apt-get install -y binutils binwalk gcc make rustup
 sudo apt-get install -y pkg-config libasound2-dev
+sudo apt-get install -y dosbox-x
 rustup default stable
 
 # install oh-my-pi (this is a throwaway vm so `curl | sh` is ok...)

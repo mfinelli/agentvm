@@ -223,6 +223,19 @@ run_sh() {
 apt_install() {
   run sudo apt-get install -y "$@"
 }
+# Put a directory on PATH for the rest of this run. Components cannot rely on
+# ~/.bashrc: it is written for interactive shells, and sourcing it under
+# `set -e` is unsafe (see component_mise).
+path_add() {
+  local dir=$1
+  (( DRY_RUN )) || [[ -d $dir ]] || return 0
+  case ":$PATH:" in
+    *":$dir:"*) return 0 ;;
+  esac
+  log "+ PATH=$dir:\$PATH"
+  (( DRY_RUN )) || export PATH="$dir:$PATH"
+}
+
 # append a line to ~/.bashrc once, so re-running the script stays clean
 bashrc_add() {
   local line=$1
@@ -443,25 +456,26 @@ component_dosbox() {
 
 component_mise() {
   run_sh 'curl -fsSL https://mise.run/bash | sh'
-  # Debian's stock ~/.bashrc returns early for non-interactive shells, so this
-  # source is usually a no-op; put the install dir on PATH explicitly.
-  (( DRY_RUN )) || source "$HOME/.bashrc"
-  export PATH="$HOME/.local/bin:$PATH"
+  # The installer drops the binary in ~/.local/bin and appends its `activate`
+  # line to ~/.bashrc, which only helps interactive shells. Put the directory
+  # on PATH here rather than sourcing ~/.bashrc: Debian's stock rc opens with
+  # `case $- in *i*) ;; *) return;; esac`, and that bare `return` inherits the
+  # status of whatever ran before it. Under `set -e` the source then aborts the
+  # whole run, which is what used to kill every component after mise.
+  path_add "$HOME/.local/bin"
 }
 
 component_node() {
   # mise is on PATH thanks to its own component
   run mise use -g node@lts
   # mise's shims are not on PATH in this non-interactive shell
-  if ! (( DRY_RUN )); then
-    export PATH="$HOME/.local/share/mise/shims:$PATH"
-  fi
+  path_add "$HOME/.local/share/mise/shims"
 }
 
 component_omp() {
   run_sh 'curl -fsSL https://omp.sh/install | sh'
   bashrc_add 'export PATH=~/.local/bin:$PATH'
-  export PATH="$HOME/.local/bin:$PATH"
+  path_add "$HOME/.local/bin"
 }
 
 component_ntfy() {

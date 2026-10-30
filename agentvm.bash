@@ -168,18 +168,23 @@ done
 # ---------------------------------------------------------------------------
 # project definitions: what a given `omp-PROJECT` box needs
 #
-# Each project lists everything it wants, spelled out in full. A project may
-# also call another project's function, but keeping the lists explicit means
-# a project can be read top to bottom without chasing other definitions.
-# Order here does not matter: COMPONENTS decides execution order.
+# Most projects want the same baseline; that lives in `use_standard` so a new
+# baseline component is added in one place. A project then lists only what it
+# adds on top. Projects generally do not call each other, but they can if it
+# is useful. Order here does not matter: COMPONENTS decides execution order.
 # ---------------------------------------------------------------------------
 
-project_agentvm() {
+# The baseline every VM gets.
+use_standard() {
   use base editor git fonts mise omp ntfy
 }
 
+project_agentvm() {
+  use_standard
+}
+
 project_opentower() {
-  use base editor git fonts mise omp ntfy
+  use_standard
   use buildtools rust
   use ghidra dosbox rea
   apt_extra libasound2-dev

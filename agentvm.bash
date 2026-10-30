@@ -63,6 +63,7 @@ rustup default stable
 # install oh-my-pi (this is a throwaway vm so `curl | sh` is ok...)
 curl -fsSL https://omp.sh/install | sh
 echo "export PATH=~/.local/bin:\$PATH" >> ~/.bashrc
+export PATH=~/.local/bin:$PATH
 
 # https://github.com/hakkm/omp-ntfy
 echo "export NTFY_SERVER=http://192.168.123.1:8081" >> ~/.bashrc

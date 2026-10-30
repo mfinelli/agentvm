@@ -64,6 +64,7 @@ rustup default stable
 
 # install curl | sh is ok because this is a throwaway vm
 curl -fsSL https://mise.run/bash | sh
+source ~/.bashrc
 mise use -g node@lts
 
 # install oh-my-pi (this is a throwaway vm so `curl | sh` is ok...)

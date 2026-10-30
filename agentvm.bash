@@ -33,6 +33,13 @@ set -euo pipefail;
 #   installed at SECRET_DEST). Anything left over at the end is reported and
 #   removed.
 #
+# Git authentication:
+#   The `git` component installs `github-token` at
+#   ~/.config/git/tokens/github.com and configures a credential helper scoped
+#   to https://github.com only. A second provider gets its own file and its
+#   own scoped helper, e.g. credential.https://gitlab.com.helper reading
+#   tokens/gitlab.com.
+#
 # AGENTVM_DRY_RUN=1 prints what would happen without touching the system.
 # `--list` prints the components a project would run, marking ones that were
 # only pulled in as dependencies.
@@ -87,11 +94,16 @@ SECRET_DIR=${AGENTVM_SECRET_DIR:-/dev/shm/secrets}
 declare -A SECRET_DEST=(
   [git-name]=""
   [git-email]=""
+  # Tokens are installed per host under ~/.config/git/tokens/<host>, so a
+  # second provider (gitlab, ...) gets its own file. The host is part of the
+  # path, so the credential helper can be scoped to exactly that host.
+  [github-token]="$HOME/.config/git/tokens/github.com"
 )
 
 declare -A SECRET_USERS=(
   [git-name]='git'
   [git-email]='git'
+  [github-token]='git'
 )
 
 REQUIRED_SECRETS=()
@@ -337,9 +349,11 @@ component_editor() {
 component_git() {
   apt_install git
 
-  local git_name git_email
+  local git_name git_email token
   secret_value git-name git_name
   secret_value git-email git_email
+  token=${SECRET_DEST[github-token]}
+  take_secret github-token
   (( DRY_RUN )) && return 0
 
   if [[ -z $git_name || -z $git_email ]]; then
@@ -349,6 +363,12 @@ component_git() {
 
   run git config --global user.name "$git_name"
   run git config --global user.email "$git_email"
+
+  # Read-only PAT over https. The helper is configured for github.com only,
+  # so another provider (gitlab, ...) can add its own scoped helper.
+  run git config --global --unset-all credential.helper || true
+  run git config --global "credential.https://github.com.helper" \
+    "!f() { [ \"\$1\" = get ] && { echo username=x-access-token; echo \"password=\$(cat $token)\"; }; }; f"
 }
 
 component_fonts() {

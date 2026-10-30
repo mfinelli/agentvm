@@ -12,6 +12,7 @@ set -euo pipefail;
 
 GHIDRA_BASE=https://github.com/NationalSecurityAgency/ghidra/releases/download
 GHIDRA_VERSION=Ghidra_12.2_build/ghidra_12.2_PUBLIC_20261016
+GHIDRA_INSTALL_STR=ghidra_12.2_PUBLIC
 NERDFONTS_BASE=https://github.com/ryanoasis/nerd-fonts/releases/download
 NERDFONTS_VERSION=3.5.1
 
@@ -19,7 +20,7 @@ sudo echo -n
 
 # install global tools
 sudo apt-get install -y curl git htop magic-wormhole vim wget
-sudo apt-get install -y 7zip imagemagick libarchive-tools openjdk-25-jdk
+sudo apt-get install -y 7zip imagemagick libarchive-tools openjdk-25-jdk unzip
 sudo apt-get install -y python3 python3-pip
 
 echo "export EDITOR=vim" >> ~/.bashrc
@@ -53,12 +54,17 @@ mv "$(basename "$GHIDRA_VERSION.zip")" ~/Downloads
   cd ~/Downloads
   bsdtar xf "$(basename "$GHIDRA_VERSION.zip")"
 )
+echo "export GHIDRA_INSTALL_DIR=~/Downloads/$GHIDRA_INSTALL_STR" >> ~/.bashrc
 
 # install build tools
 sudo apt-get install -y binutils binwalk gcc make rustup
 sudo apt-get install -y pkg-config libasound2-dev
 sudo apt-get install -y dosbox-x
 rustup default stable
+
+# install curl | sh is ok because this is a throwaway vm
+curl -fsSL https://mise.run/bash | sh
+mise use -g node@lts
 
 # install oh-my-pi (this is a throwaway vm so `curl | sh` is ok...)
 curl -fsSL https://omp.sh/install | sh
@@ -69,5 +75,7 @@ export PATH=~/.local/bin:$PATH
 echo "export NTFY_SERVER=http://192.168.123.1:8081" >> ~/.bashrc
 echo "export NTFY_TOPIC=omp" >> ~/.bashrc
 omp install npm:omp-ntfy
+
+npx rea-agents setup
 
 exit 0

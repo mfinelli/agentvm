@@ -64,6 +64,7 @@ rustup default stable
 curl -fsSL https://omp.sh/install | sh
 echo "export PATH=~/.local/bin:\$PATH" >> ~/.bashrc
 
+# https://github.com/hakkm/omp-ntfy
 echo "export NTFY_SERVER=http://192.168.123.1:8081" >> ~/.bashrc
 echo "export NTFY_TOPIC=omp" >> ~/.bashrc
 omp install npm:omp-ntfy

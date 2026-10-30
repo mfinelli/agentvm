@@ -220,9 +220,6 @@ run_sh() {
   log "+ sh -c '$1'"
   (( DRY_RUN )) || bash -c "$1"
 }
-sudo_v() {
-  (( DRY_RUN )) || sudo -v
-}
 apt_install() {
   run sudo apt-get install -y "$@"
 }
@@ -569,7 +566,6 @@ main() {
   preflight_secrets
 
   log "project $PROJECT: ${order[*]}"
-  sudo_v
   for c in "${order[@]}"; do
     component_$c
   done

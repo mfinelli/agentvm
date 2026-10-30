@@ -428,7 +428,7 @@ component_bash() {
   run mkdir -p "$HOME/src"
 
   bashrc_add "export BASH_IT=\"$dir\""
-  bashrc_add "export BASH_IT_THEME='barbuk'"
+  bashrc_add "export BASH_IT_THEME='minimal'"
   bashrc_add "export BASH_IT_PROJECT_PATHS=\"$HOME/src\""
   bashrc_add 'export BASH_IT_COMMAND_DURATION=true'
   bashrc_add 'export COMMAND_DURATION_MIN_SECONDS=1'

@@ -49,11 +49,13 @@ GHIDRA_VERSION=Ghidra_12.2_build/ghidra_12.2_PUBLIC_20261016
 GHIDRA_INSTALL_STR=ghidra_12.2_PUBLIC
 NERDFONTS_BASE=https://github.com/ryanoasis/nerd-fonts/releases/download
 NERDFONTS_VERSION=3.5.1
+BASH_IT_REPO=https://github.com/Bash-it/bash-it
 
 COMPONENTS=(
   base
   editor
   git
+  bash
   fonts
   java
   ghidra
@@ -114,6 +116,7 @@ CONSUMED_SECRETS=()
 # pulls these in transitively, and COMPONENTS already runs them first, so
 # declaring an edge never changes execution order.
 declare -A DEPENDS=(
+  [bash]='git'
   [ghidra]='java'
   [node]='mise'
   [ntfy]='omp'
@@ -176,7 +179,7 @@ done
 
 # The baseline every VM gets.
 use_standard() {
-  use base editor git fonts mise omp ntfy
+  use base editor git bash fonts mise omp ntfy
 }
 
 project_agentvm() {
@@ -400,6 +403,27 @@ component_ghidra() {
   run wget -O "$HOME/Downloads/$zip" "$GHIDRA_BASE/$GHIDRA_VERSION.zip"
   run bsdtar -xf "$HOME/Downloads/$zip" -C "$HOME/Downloads"
   bashrc_add "export GHIDRA_INSTALL_DIR=~/Downloads/$GHIDRA_INSTALL_STR"
+}
+
+component_bash() {
+  # bash-it, sourced from ~/.bashrc rather than via its install script: the
+  # installer rewrites ~/.bashrc itself, and these settings would have to be
+  # applied afterwards anyway.
+  local dir=$HOME/.bashit
+  if [[ ! -d $dir/.git ]]; then
+    run git clone --depth 1 "$BASH_IT_REPO" "$dir"
+  fi
+
+  # A place for work, referenced by BASH_IT_PROJECT_PATHS below.
+  run mkdir -p "$HOME/src"
+
+  bashrc_add "export BASH_IT=\"$dir\""
+  bashrc_add "export BASH_IT_THEME='barbuk'"
+  bashrc_add "export BASH_IT_PROJECT_PATHS=\"$HOME/src\""
+  bashrc_add 'export BASH_IT_COMMAND_DURATION=true'
+  bashrc_add 'export COMMAND_DURATION_MIN_SECONDS=1'
+  # last, so every setting above is in scope when bash-it loads
+  bashrc_add "source \"\${BASH_IT?}/bash_it.sh\""
 }
 
 component_buildtools() {

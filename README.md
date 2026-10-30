@@ -31,8 +31,10 @@ Or from a checkout:
 ./agentvm.bash
 ```
 
-Secrets are pushed separately, before running the script — see
-[Secrets](#secrets).
+Secrets are pushed separately, before running the script. You need **two
+terminals** for that: one logged into the guest, one on your host to push the
+secrets. See [You need two terminals](#you-need-two-terminals) before you
+start, or the secrets will be discarded before the script can read them.
 
 ## Selecting what gets installed
 
@@ -155,6 +157,36 @@ vm-provision omp-agentvm
 
 `vm-provision` decrypts each file locally and pipes it over the SSH connection.
 
+### You need two terminals
+
+`/dev/shm/secrets` only survives while the target user has a login session
+open. `systemd-logind` defaults to `RemoveIPC=yes`, and when the last session
+of a user ends it unlinks every `/dev/shm` entry owned by that UID. The SSH
+connection `vm-provision` uses is its own session, so provisioning into a VM
+you are not otherwise logged into deletes the secrets again the moment that
+connection closes (i.e., before `agentvm.bash` can read them).
+
+Keep a session open for the whole sequence:
+
+1. **Terminal A — inside the guest.** `vm-ssh omp-agentvm`, or a VNC/console
+   session (`vm-vnc omp-agentvm`). Leave it logged in. Any session for the
+   VM's user pins the user record and keeps the cleanup from running.
+2. **Terminal B — on your main host.** `vm-provision omp-agentvm`, then run
+   the setup script over SSH in that same window:
+
+   ```bash
+   vm-provision omp-agentvm
+   vm-ssh omp-agentvm 'bash -c "$(curl -fsSL https://mfgo.link/agentvm)"'
+   ```
+
+   Pass the remote command as a single quoted argument: `vm-ssh` hands its
+   extra arguments straight to `ssh`, which joins them and lets the *remote*
+   shell re-split the line.
+
+   Do not log out of Terminal A, and do not let it idle out, until the run
+   finishes. If the guest is a desktop VM with GDM auto-login, the graphical
+   session already counts — but only while it is logged in.
+
 ### Consumption
 
 A secret becomes required as soon as a selected component uses it —
@@ -186,7 +218,7 @@ flowchart LR
 ```
 
 - **Missing required secret → exit 3 before anything is installed.** A VM that
-  was never provisioned fails immediately instead of half-way through the run..
+  was never provisioned fails immediately instead of half-way through the run.
 - **Consumed secrets are installed and deleted**; a second run without
   re-provisioning therefore fails loudly. That is deliberate: the script is a
   one-shot.

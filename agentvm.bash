@@ -26,6 +26,13 @@ set -euo pipefail;
 # - The VM hostname is `omp-PROJECT`, so `omp-agentvm` picks `project_agentvm`.
 #   AGENTVM_PROJECT overrides the detection.
 #
+# Secrets:
+#   vm-provision pushes files into /dev/shm/secrets before this script runs.
+#   A secret is required whenever a selected component consumes it. Components
+#   read them with `secret_value VAR` (a value) or `take_secret` (a file
+#   installed at SECRET_DEST). Anything left over at the end is reported and
+#   removed.
+#
 # AGENTVM_DRY_RUN=1 prints what would happen without touching the system.
 # `--list` prints the components a project would run, marking ones that were
 # only pulled in as dependencies.
@@ -58,6 +65,39 @@ declare -A KNOWN=() WANTED=() DECLARED=()
 # packages a single project needs that are not worth their own component
 EXTRA_PKGS=()
 
+# ---------------------------------------------------------------------------
+# secrets
+#
+# vm-provision (on the operator's machine) pushes files into SECRET_DIR.
+# Components consume them with `take_secret` / `secret_value`, and anything
+# left over at the end is reported and removed.
+#
+# SECRET_DEST maps a secret name to the file it is installed as. An empty
+# value means the secret is a value to read (see `secret_value`) and not a
+# file. A name absent from this map has no destination and is reported as
+# unknown when left over.
+#
+# SECRET_USERS maps a secret name to the components that consume it. Selecting
+# any of those components makes the secret required. Two components sharing
+# one secret both appear here.
+# ---------------------------------------------------------------------------
+
+SECRET_DIR=${AGENTVM_SECRET_DIR:-/dev/shm/secrets}
+
+declare -A SECRET_DEST=(
+  [git-name]=""
+  [git-email]=""
+)
+
+declare -A SECRET_USERS=(
+  [git-name]='git'
+  [git-email]='git'
+)
+
+REQUIRED_SECRETS=()
+# names consumed during this run, so the sweep does not re-report them
+CONSUMED_SECRETS=()
+
 # DEPENDS[c] is the space separated list of components c requires. `use`
 # pulls these in transitively, and COMPONENTS already runs them first, so
 # declaring an edge never changes execution order.
@@ -87,6 +127,27 @@ for c in "${!DEPENDS[@]}"; do
     fi
     if (( POS[$d] > POS[$c] )); then
       echo "component $c depends on $d, but $d runs after $c in COMPONENTS" >&2
+      exit 2
+    fi
+  done
+done
+
+# Every secret must have a destination, and each consumer it names must be a
+# real component.
+for s in "${!SECRET_DEST[@]}"; do
+  if [[ -z ${SECRET_USERS[$s]+set} ]]; then
+    echo "secret $s has no consumer in SECRET_USERS" >&2
+    exit 2
+  fi
+done
+for s in "${!SECRET_USERS[@]}"; do
+  if [[ -z ${SECRET_DEST[$s]+set} ]]; then
+    echo "secret $s is used but has no SECRET_DEST entry" >&2
+    exit 2
+  fi
+  for c in ${SECRET_USERS[$s]}; do
+    if [[ -z ${KNOWN[$c]:-} ]]; then
+      echo "secret $s names unknown component $c" >&2
       exit 2
     fi
   done
@@ -187,6 +248,74 @@ apt_extra() {
   EXTRA_PKGS+=("$@")
 }
 
+# Fill REQUIRED_SECRETS from the components that are actually selected. Called
+# after the project function has run, before anything is installed.
+resolve_secrets() {
+  local s users c
+  for s in "${!SECRET_USERS[@]}"; do
+    # shellcheck disable=SC2086 # SECRET_USERS holds a space separated list
+    for users in ${SECRET_USERS[$s]}; do
+      if [[ -n ${WANTED[$users]:-} ]]; then
+        REQUIRED_SECRETS+=("$s")
+        break
+      fi
+    done
+  done
+}
+
+_secret_check() {
+  local s=$1
+  if [[ -z ${SECRET_DEST[$s]+set} ]]; then
+    echo "unknown secret: $s (add it to SECRET_DEST)" >&2
+    exit 2
+  fi
+  if [[ ! -f $SECRET_DIR/$s ]]; then
+    echo "missing secret: $s (re-run vm-provision)" >&2
+    exit 3
+  fi
+}
+
+# Install a file-secret at its destination, 0600, then drop the original.
+take_secret() {
+  local s=$1 dest=${SECRET_DEST[$1]}
+  _secret_check "$s"
+  if [[ -z $dest ]]; then
+    echo "secret $s has no destination; use secret_value" >&2
+    exit 2
+  fi
+  CONSUMED_SECRETS+=("$s")
+  if (( DRY_RUN )); then
+    log "would install secret $s -> $dest"
+    return 0
+  fi
+  # install sets the mode regardless of umask, but does not create parents
+  run mkdir -p "$(dirname "$dest")"
+  install -m 600 "$SECRET_DIR/$s" "$dest"
+  rm -f "$SECRET_DIR/$s"
+  log "consumed secret $s"
+}
+
+# Read a value-secret and drop the original, storing it in the named variable.
+# Uses a nameref rather than stdout: a command substitution runs in a subshell,
+# where the consumed-secret tracking would be lost.
+secret_value() {
+  local s=$1 var=$2
+  _secret_check "$s"
+  if [[ -n ${SECRET_DEST[$s]} ]]; then
+    echo "secret $s has a destination; use take_secret" >&2
+    exit 2
+  fi
+  CONSUMED_SECRETS+=("$s")
+  if (( DRY_RUN )); then
+    log "would consume secret $s" >&2
+    return 0
+  fi
+  local -n out=$var
+  out=$(<"$SECRET_DIR/$s")
+  rm -f "$SECRET_DIR/$s"
+  log "consumed secret $s" >&2
+}
+
 # ---------------------------------------------------------------------------
 # components
 # ---------------------------------------------------------------------------
@@ -209,13 +338,13 @@ component_git() {
   apt_install git
 
   local git_name git_email
+  secret_value git-name git_name
+  secret_value git-email git_email
   (( DRY_RUN )) && return 0
-  read -r -p "Enter your Git name: " git_name
-  read -r -p "Enter your Git email: " git_email
 
-  if [[ -z "$git_name" || -z "$git_email" ]]; then
-    echo "Name and email can't be empty." >&2
-    exit 1
+  if [[ -z $git_name || -z $git_email ]]; then
+    echo "git-name and git-email secrets are empty" >&2
+    exit 3
   fi
 
   run git config --global user.name "$git_name"
@@ -313,6 +442,49 @@ resolved() {
   done
 }
 
+# Every required secret must be on disk before anything is installed.
+preflight_secrets() {
+  if (( ! ${#REQUIRED_SECRETS[@]} )); then
+    return 0
+  fi
+  local s missing=()
+  for s in "${REQUIRED_SECRETS[@]}"; do
+    [[ -f $SECRET_DIR/$s ]] || missing+=("$s")
+  done
+  if (( ${#missing[@]} )); then
+    echo "missing required secrets: ${missing[*]}" >&2
+    echo "re-run vm-provision for $PROJECT" >&2
+    exit 3
+  fi
+}
+
+# Report anything left behind, then remove the directory. vm-provision pushes a
+# fixed set, so leftovers are expected; they are only warned about.
+sweep_secrets() {
+  if [[ ! -d $SECRET_DIR ]]; then
+    return 0
+  fi
+  local f n leftover=()
+  for f in "$SECRET_DIR"/*; do
+    [[ -e $f ]] || continue
+    n=${f##*/}
+    [[ " ${CONSUMED_SECRETS[*]} " == *" $n "* ]] && continue
+    if [[ -z ${SECRET_DEST[$n]+set} ]]; then
+      leftover+=("$n (unknown)")
+    else
+      leftover+=("$n")
+    fi
+  done
+  if (( ${#leftover[@]} )); then
+    log "warning: unused secrets removed: ${leftover[*]}" >&2
+  fi
+  if (( DRY_RUN )); then
+    log "would remove $SECRET_DIR"
+    return 0
+  fi
+  rm -rf "$SECRET_DIR"
+}
+
 main() {
   local fn=project_$PROJECT c order=()
 
@@ -325,6 +497,7 @@ main() {
 
   # array, not `while read`: components may prompt on stdin
   mapfile -t order < <(resolved)
+  resolve_secrets
 
   if [[ ${1:-} == --list ]]; then
     echo "project: $PROJECT"
@@ -338,8 +511,13 @@ main() {
     if (( ${#EXTRA_PKGS[@]} )); then
       echo "extra packages: ${EXTRA_PKGS[*]}"
     fi
+    if (( ${#REQUIRED_SECRETS[@]} )); then
+      echo "secrets: ${REQUIRED_SECRETS[*]}"
+    fi
     return 0
   fi
+
+  preflight_secrets
 
   log "project $PROJECT: ${order[*]}"
   sudo_v
@@ -350,6 +528,8 @@ main() {
   if (( ${#EXTRA_PKGS[@]} )); then
     apt_install "${EXTRA_PKGS[@]}"
   fi
+
+  sweep_secrets
 }
 
 main "$@"

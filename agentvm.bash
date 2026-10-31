@@ -43,6 +43,11 @@ set -euo pipefail;
 # AGENTVM_DRY_RUN=1 prints what would happen without touching the system.
 # `--list` prints the components a project would run, marking ones that were
 # only pulled in as dependencies.
+# `--only COMPONENT...` applies named components (and their dependencies) and
+# ignores the project, so a VM that is already built can gain one component.
+# `--only` also works on a host that is not named omp-PROJECT. A targeted run
+# does not sweep secrets: it cannot tell an unconsumed secret from one that a
+# later run still needs.
 
 GHIDRA_BASE=https://github.com/NationalSecurityAgency/ghidra/releases/download
 GHIDRA_VERSION=Ghidra_12.2_build/ghidra_12.2_PUBLIC_20261016
@@ -50,6 +55,10 @@ GHIDRA_INSTALL_STR=ghidra_12.2_PUBLIC
 NERDFONTS_BASE=https://github.com/ryanoasis/nerd-fonts/releases/download
 NERDFONTS_VERSION=3.5.1
 BASH_IT_REPO=https://github.com/Bash-it/bash-it
+AGENTVM_REPO=https://github.com/mfinelli/agentvm.git
+AGENTVM_LINK=${AGENTVM_LINK:-$HOME/.local/bin/agentvm}
+# where component_agentvm keeps its checkout
+AGENTVM_DIR=${AGENTVM_DIR:-$HOME/.agentvm}
 
 COMPONENTS=(
   base
@@ -69,6 +78,7 @@ COMPONENTS=(
   omp
   ntfy
   rea
+  agentvm
 )
 
 declare -A KNOWN=() WANTED=() DECLARED=()
@@ -180,7 +190,7 @@ done
 
 # The baseline every VM gets.
 use_standard() {
-  use base editor git bash screen fonts mise omp ntfy
+  use base editor git bash screen fonts mise omp ntfy agentvm
 }
 
 project_agentvm() {
@@ -204,14 +214,33 @@ project_default() {
 # ---------------------------------------------------------------------------
 
 HOST=${HOSTNAME%%.*}
-if [[ -z ${AGENTVM_PROJECT:-} && $HOST != omp-* ]]; then
-  echo "hostname '$HOST' is not omp-PROJECT; set AGENTVM_PROJECT" >&2
-  exit 2
-fi
-PROJECT=${AGENTVM_PROJECT:-${HOST#omp-}}
 DRY_RUN=${AGENTVM_DRY_RUN:-0}
 
 log() { printf '\n==> %s\n' "$*"; }
+usage() {
+  cat <<'EOF'
+Usage: agentvm.bash [--list] [--only COMPONENT...]
+       agentvm.bash --help
+
+Runs the project for this VM's hostname (omp-PROJECT) and applies every
+component it selects.
+
+  --list              print what the run would apply, then exit
+  --only COMPONENT... apply just these components (and their dependencies),
+                      ignoring the project. Works on any hostname.
+  --update            git pull the checkout at ~/.agentvm and exit
+  -h, --help          show this help
+
+  COMPONENT may be repeated, separated by spaces, or comma separated.
+
+Environment:
+  AGENTVM_PROJECT     override hostname detection
+  AGENTVM_SECRET_DIR  directory vm-provision pushed secrets to
+  AGENTVM_DIR         checkout location (default: ~/.agentvm)
+  AGENTVM_LINK        symlink to the script (default: ~/.local/bin/agentvm)
+  AGENTVM_DRY_RUN=1   print the commands instead of running them
+EOF
+}
 run() {
   log "+ $*"
   (( DRY_RUN )) || "$@"
@@ -553,6 +582,73 @@ component_rea() {
   run npx rea-agents setup
 }
 
+# Keep a checkout of this repo in the guest, so a component that shipped after
+# this VM was built can still be applied without re-provisioning.
+#
+# It is in use_standard, so every VM ends up with the checkout that makes
+# `git pull` + `--only <new component>` possible. Cloning only needs the git
+# *package*, not the `git` component: that one also consumes the identity and
+# token secrets, and requiring a token just to fetch a public repo would make a
+# targeted apply unusable on a VM that was never provisioned. Hence the apt
+# call here rather than a DEPENDS edge.
+component_agentvm() {
+  local dir=$AGENTVM_DIR link=$AGENTVM_LINK
+
+  command -v git > /dev/null || apt_install git
+
+  if [[ -d $dir/.git ]]; then
+    # An existing checkout is the operator's: update it, never delete and
+    # re-clone over local changes.
+    run git -C "$dir" pull --ff-only
+  elif [[ -d $dir ]] && [[ -n $(ls -A "$dir") ]]; then
+    # Something is there but it is not a checkout. Deleting it would throw away
+    # whatever the operator left there, so stop and say what to do.
+    echo "$dir exists but is not a git checkout; move it aside or set AGENTVM_DIR" >&2
+    exit 1
+  else
+    run git clone "$AGENTVM_REPO" "$dir"
+  fi
+
+  # ~/.local/bin is already on PATH (component_omp and component_mise put it
+  # there, and ~/.bashrc exports it), so this is the whole point: `agentvm`
+  # works from anywhere without knowing the checkout path.
+  if [[ -L $link ]] && [[ $(readlink "$link") == "$dir/agentvm.bash" ]]; then
+    return 0
+  fi
+  log "+ $link -> $dir/agentvm.bash"
+  (( DRY_RUN )) && return 0
+  mkdir -p "$(dirname "$link")"
+  # Replace a stale link, but do not clobber a real file someone put there.
+  if [[ -e $link ]] && [[ ! -L $link ]]; then
+    echo "$link exists and is not a symlink; move it aside or set AGENTVM_LINK" >&2
+    exit 1
+  fi
+  ln -sfn "$dir/agentvm.bash" "$link"
+}
+
+# Re-point an existing checkout at the tip of the branch. `--update` is for the
+# case where the VM was built from an older revision and you want the script
+# that is on disk to be the current one, without re-running a component.
+update_agentvm() {
+  local dir=$AGENTVM_DIR before after
+
+  if [[ ! -d $dir/.git ]]; then
+    echo "no checkout at $dir; run: agentvm --only agentvm" >&2
+    exit 1
+  fi
+
+  before=$(git -C "$dir" rev-parse HEAD 2> /dev/null || true)
+  run git -C "$dir" pull --ff-only
+  after=$(git -C "$dir" rev-parse HEAD 2> /dev/null || true)
+
+  # The running copy is this file, which the pull just changed underneath us.
+  # Say so only when it actually moved, so a no-op `--update` stays quiet.
+  if [[ $before != "$after" ]] && (( ! DRY_RUN )) &&
+    [[ $(readlink -f "$0") == "$(readlink -f "$dir/agentvm.bash")" ]]; then
+    log "note: $dir/agentvm.bash moved to $after; the new version runs next time" >&2
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
@@ -577,7 +673,11 @@ preflight_secrets() {
   done
   if (( ${#missing[@]} )); then
     echo "missing required secrets: ${missing[*]}" >&2
-    echo "re-run vm-provision for $PROJECT" >&2
+    if [[ $PROJECT == '(only)' ]]; then
+      echo "re-run vm-provision for this host" >&2
+    else
+      echo "re-run vm-provision for $PROJECT" >&2
+    fi
     exit 3
   fi
 }
@@ -610,21 +710,92 @@ sweep_secrets() {
 }
 
 main() {
-  local fn=project_$PROJECT c order=()
+  local c order=() only=() list=0
 
-  if ! declare -F "$fn" > /dev/null; then
-    echo "no definition for project '$PROJECT', using project_default" >&2
-    fn=project_default
+  while (( $# )); do
+    case $1 in
+      --list)
+        list=1
+        shift
+        ;;
+      --only)
+        shift
+        # take everything up to the next flag, so `--only a b` works too
+        while (( $# )) && [[ $1 != --* ]]; do
+          only+=("$1")
+          shift
+        done
+        ;;
+      --only=*)
+        IFS=, read -r -a _names <<< "${1#*=}"
+        only+=("${_names[@]}")
+        shift
+        ;;
+      --update)
+        # Handled before anything else and exits: it changes the script on
+        # disk, and everything below is about what that script should apply.
+        update_agentvm
+        return 0
+        ;;
+      -h | --help)
+        usage
+        return 0
+        ;;
+      *)
+        echo "unknown argument: $1" >&2
+        usage >&2
+        exit 2
+        ;;
+    esac
+  done
+
+  # `--only a,b`, `--only a b` and `--only=a,b` all mean the same thing.
+  if (( ${#only[@]} )); then
+    local -a split=() parts=()
+    local name
+    for name in "${only[@]}"; do
+      IFS=, read -r -a parts <<< "$name"
+      split+=("${parts[@]}")
+    done
+    only=()
+    for name in "${split[@]}"; do
+      [[ -n $name ]] && only+=("$name")
+    done
   fi
-  # project bodies declare with `use`, whose dependencies land in WANTED only
-  "$fn"
+
+  if (( ${#only[@]} )); then
+    # A targeted apply ignores the project, but not the dependency graph: the
+    # point is to get one component and everything it needs, not to reimplement
+    # DEPENDS by hand.
+    use "${only[@]}"
+    PROJECT='(only)'
+  else
+    # A project is picked from the hostname; `--only` is what makes a run work
+    # on a host that does not follow the convention.
+    if [[ -z ${AGENTVM_PROJECT:-} && $HOST != omp-* ]]; then
+      echo "hostname '$HOST' is not omp-PROJECT; set AGENTVM_PROJECT or use --only" >&2
+      exit 2
+    fi
+    PROJECT=${AGENTVM_PROJECT:-${HOST#omp-}}
+    local fn=project_$PROJECT
+    if ! declare -F "$fn" > /dev/null; then
+      echo "no definition for project '$PROJECT', using project_default" >&2
+      fn=project_default
+    fi
+    # project bodies declare with `use`, whose dependencies land in WANTED only
+    "$fn"
+  fi
 
   # array, not `while read`: components may prompt on stdin
   mapfile -t order < <(resolved)
   resolve_secrets
 
-  if [[ ${1:-} == --list ]]; then
-    echo "project: $PROJECT"
+  if (( list )); then
+    if [[ $PROJECT == '(only)' ]]; then
+      echo "components: ${only[*]}"
+    else
+      echo "project: $PROJECT"
+    fi
     for c in "${order[@]}"; do
       if [[ -n ${DECLARED[$c]:-} ]]; then
         echo "$c"
@@ -643,7 +814,11 @@ main() {
 
   preflight_secrets
 
-  log "project $PROJECT: ${order[*]}"
+  if [[ $PROJECT == '(only)' ]]; then
+    log "components: ${order[*]}"
+  else
+    log "project $PROJECT: ${order[*]}"
+  fi
   for c in "${order[@]}"; do
     component_$c
   done
@@ -652,7 +827,13 @@ main() {
     apt_install "${EXTRA_PKGS[@]}"
   fi
 
-  sweep_secrets
+  # Only sweep when this run was provisioned for. A targeted apply of a
+  # component that needs no secret must not delete secrets left behind by an
+  # earlier run that failed before consuming them (or pushed by an operator
+  # who never ran anything else).
+  if [[ -d $SECRET_DIR ]] && (( ${#CONSUMED_SECRETS[@]} )); then
+    sweep_secrets
+  fi
 }
 
 main "$@"

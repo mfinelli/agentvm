@@ -60,7 +60,7 @@ A project is a function that declares what it wants but doesn't install
 anything itself. Most projects start from the shared baseline and add to it:
 
 ```bash
-use_standard      # base editor git bash screen fonts mise omp ntfy
+use_standard      # base editor git bash screen fonts mise omp ntfy agentvm
 
 project_opentower() {
   use_standard
@@ -80,7 +80,7 @@ registry, and **its order is the execution order**:
 
 ```
 base editor git bash screen fonts java ghidra buildtools re rust dosbox \
-  mise node omp ntfy rea
+  mise node omp ntfy rea agentvm
 ```
 
 Declaring a dependency doesn't reorder anything; it only widens what a project
@@ -102,6 +102,56 @@ are checked at startup and abort with exit 2:
 - a dependency must exist in `COMPONENTS`;
 - a component may not depend on itself;
 - a dependency must appear *earlier* in `COMPONENTS` than its dependent.
+
+### Applying a single component later
+
+A VM is not frozen when the first run finishes. `--only` applies named
+components on their own, pulling in whatever they depend on and ignoring the
+project entirely:
+
+```bash
+./agentvm.bash --only screen          # screen, no secrets, no other component
+./agentvm.bash --only rea             # + re, node, mise as dependencies
+./agentvm.bash --only screen,rea      # comma or space separated
+./agentvm.bash --only screen --list   # preview first
+```
+
+`--only` also works on a host whose name does not follow `omp-PROJECT`, which
+is the point: it is for patching a machine that is already set up.
+
+A targeted apply does not need secrets unless the components it names consume
+one, and it **never sweeps** `/dev/shm/secrets`. Sweeping is a full-run
+operation, because a partial run cannot tell an unconsumed secret from one
+that belongs to a run still to come.
+
+### Self-install
+
+`component_agentvm` keeps a checkout of this repo at `~/.agentvm` and symlinks
+it into `~/.local/bin/agentvm`, which is already on `PATH`. It is part of
+`use_standard`, so every VM built by this script ends up with one:
+
+```bash
+agentvm --update                # git pull the checkout, then exit
+agentvm --only <new component>  # apply something added since this VM was built
+```
+
+That is the upgrade path for a VM built from an older revision: update the
+checkout, then apply the component that did not exist when the VM was made.
+No path to remember — `~/.local/bin` is where `mise` and `omp` already live.
+
+Three details worth knowing:
+
+- **It updates, it does not re-clone.** An existing `~/.agentvm` gets
+  `git pull --ff-only`, so local edits are never destroyed. Only a missing or
+  empty directory triggers a clone.
+- **Nothing is deleted.** If `~/.agentvm` exists but is not a checkout, or if
+  `~/.local/bin/agentvm` exists but is not a symlink, the component stops and
+  says which variable (`AGENTVM_DIR`, `AGENTVM_LINK`) to set. A stale symlink
+  pointing somewhere else is repointed.
+- **No secret is required.** It installs the `git` *package* if the binary is
+  missing, rather than depending on the `git` component, which would also
+  demand the identity and token secrets. Fetching a public repo should not
+  need a token, and a VM that was never provisioned can still self-install.
 
 ### Inspecting a project without changing anything
 
@@ -281,6 +331,7 @@ https://github.com/settings/personal-access-tokens/new?name=VM+read+token&conten
 | `omp` | oh-my-pi, `~/.local/bin` on PATH |
 | `ntfy` | omp-ntfy plugin, `NTFY_SERVER`/`NTFY_TOPIC` |
 | `rea` | `npx rea-agents setup` |
+| `agentvm` | checkout at `~/.agentvm`, symlinked to `~/.local/bin/agentvm` |
 
 `~/.bashrc` lines are appended idempotently: re-running the script does not
 duplicate them. `~/.screenrc` is written whole, and only when its content

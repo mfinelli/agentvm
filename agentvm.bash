@@ -56,6 +56,7 @@ COMPONENTS=(
   editor
   git
   bash
+  screen
   fonts
   java
   ghidra
@@ -179,7 +180,7 @@ done
 
 # The baseline every VM gets.
 use_standard() {
-  use base editor git bash fonts mise omp ntfy
+  use base editor git bash screen fonts mise omp ntfy
 }
 
 project_agentvm() {
@@ -244,6 +245,21 @@ bashrc_add() {
   fi
   log "+ ~/.bashrc += $line"
   (( DRY_RUN )) || printf '%s\n' "$line" >> "$HOME/.bashrc"
+}
+
+# Write a config file from stdin, replacing it only when the content differs.
+# Comparing first keeps a re-run from rewriting the file and losing the mtime
+# (and, for a dotfile the operator edits, from clobbering it silently).
+install_config() {
+  local dest=$1 content
+  content=$(cat)
+  if [[ -f $dest ]] && [[ $(<"$dest") == "$content" ]]; then
+    return 0
+  fi
+  log "+ $dest"
+  (( DRY_RUN )) && return 0
+  mkdir -p "$(dirname "$dest")"
+  printf '%s\n' "$content" > "$dest"
 }
 
 use() {
@@ -434,6 +450,54 @@ component_bash() {
   bashrc_add 'export COMMAND_DURATION_MIN_SECONDS=1'
   # last, so every setting above is in scope when bash-it loads
   bashrc_add "source \"\${BASH_IT?}/bash_it.sh\""
+}
+
+component_screen() {
+  apt_install screen
+
+  # The status line is the point of this file, so spell out what each block is:
+  #
+  #   [host][current][session UTC]         [other windows]
+  #
+  # The fixed part comes first on purpose. screen truncates a hardstatus that
+  # does not fit, and eats it from the right: with the session/UTC block on the
+  # right, a ten-window list pushed it off an 80-column terminal entirely.
+  # Anchoring it left means narrow terminals lose window entries instead.
+  #
+  # '%n %t' repeats the selected window on purpose: the '%W' list only shows
+  # the *other* windows, so without this block a narrow terminal would show a
+  # list with no indication of which entry is current. '%W' (not '%-Lw'/'%+Lw')
+  # is what keeps the current window out of the list, so it is not printed
+  # twice.
+  #
+  # '%E' is true while the command character has been pressed and screen is
+  # waiting for the rest of a command, which is what makes '[CMD]' appear.
+  #
+  # There is no UTC escape: '%c' is local time, so a backtick runs date(1).
+  # The two 60s numbers are the output lifespan and the redraw interval.
+  install_config "$HOME/.screenrc" <<'EOF'
+startup_message off
+vbell off
+defscrollback 10000
+altscreen on
+defutf8 on
+term screen-256color
+
+# no UTC escape in screen; '%c' is local time
+backtick 1 60 60 /bin/date -u +%H:%MZ
+
+hardstatus alwayslastline
+hardstatus string '%{= kG}[%{G}%H%{g}][%{= rW}%n %t%{= kG}][%{B}%S %{W}UTC %1`%{g}]%?%E%{= rW}[CMD]%{= kG}%:%=%{= kw}[%W]%{k}'
+
+# A shell in every window: omp may not be installed (or may be broken), and
+# the point is to choose what runs in each window anyway.
+#
+# The last window created is the one screen selects when you attach, and a
+# `select' line in a detached start does not change that. Listing shell first
+# is therefore what makes the agent window the one you land in.
+screen -t shell 1
+screen -t agent 0
+EOF
 }
 
 component_buildtools() {

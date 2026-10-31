@@ -60,7 +60,7 @@ A project is a function that declares what it wants but doesn't install
 anything itself. Most projects start from the shared baseline and add to it:
 
 ```bash
-use_standard      # base editor git bash fonts mise omp ntfy
+use_standard      # base editor git bash screen fonts mise omp ntfy
 
 project_opentower() {
   use_standard
@@ -79,8 +79,8 @@ Each component is one `component_<name>` function. `COMPONENTS` is the
 registry, and **its order is the execution order**:
 
 ```
-base editor git bash fonts java ghidra buildtools re rust dosbox mise node \
-  omp ntfy rea
+base editor git bash screen fonts java ghidra buildtools re rust dosbox \
+  mise node omp ntfy rea
 ```
 
 Declaring a dependency doesn't reorder anything; it only widens what a project
@@ -119,6 +119,7 @@ base
 editor
 git
 bash
+screen
 fonts
   java (dependency)
 ghidra
@@ -266,7 +267,8 @@ https://github.com/settings/personal-access-tokens/new?name=VM+read+token&conten
 | `base` | curl wget htop bat python3 python3-pip magic-wormhole imagemagick 7zip libarchive-tools unzip |
 | `editor` | vim, `EDITOR=vim` |
 | `git` | git, identity from secrets, host-scoped token helper |
-| `bash` | bash-it in `~/.bashit` (barbuk theme, command duration), `~/src` |
+| `bash` | bash-it in `~/.bashit` (minimal theme, command duration), `~/src` |
+| `screen` | screen, `~/.screenrc` with a status line (see below) |
 | `fonts` | AdwaitaMono Nerd Font |
 | `java` | openjdk-25-jdk |
 | `ghidra` | Ghidra 12.2 in `~/Downloads`, `GHIDRA_INSTALL_DIR` |
@@ -281,7 +283,38 @@ https://github.com/settings/personal-access-tokens/new?name=VM+read+token&conten
 | `rea` | `npx rea-agents setup` |
 
 `~/.bashrc` lines are appended idempotently: re-running the script does not
-duplicate them.
+duplicate them. `~/.screenrc` is written whole, and only when its content
+differs, so a re-run neither rewrites the file nor discards local edits
+silently.
+
+## Screen
+
+Working over SSH means two jobs share one terminal: the agent, and whatever
+you are doing next to it. `component_screen` installs screen and writes a
+`~/.screenrc` whose last line is:
+
+```
+[omp-agentvm][0 agent][omp UTC 00:29Z]                      [1 shell]
+ └ hostname    └ current └ session, UTC                      └ other windows
+```
+
+- **Which window is current** is always visible, because it is pinned in the
+  fixed left block rather than inferred from a `*` in the list.
+- **The list holds the other windows only** (`%W`), so the current one is not
+  printed twice. At narrow widths the list truncates and the fixed block
+  survives; at 40 columns only the fixed block remains.
+- **`[CMD]` appears** when you press the command character, so you can see
+  screen is waiting for the rest of a command.
+
+Two defaults worth knowing:
+
+- `C-a` is still the command character. omp binds `C-a` to "move to line
+  start", so inside the agent that key now needs `C-a a` to reach it.
+- Window 0 is a plain shell. A broken or absent `omp` cannot then
+  leave you with a dead window, and you choose what each window runs. The
+  last `screen -t` line in `.screenrc` is the window screen lands on — a
+  `select` line does not do this for a detached session — so `agent` is
+  listed last to make it the one you attach to.
 
 ## Adding a project
 

@@ -1062,10 +1062,41 @@ main() {
   if [[ -d $SECRET_DIR ]] && ((${#CONSUMED_SECRETS[@]})); then
     sweep_secrets
   fi
+
+  # A run is mostly apt/get output, so success looks like whatever the last
+  # installer happened to print. Say it explicitly, and say it on stdout: a
+  # human and a wrapper script both want to see it. `DRY_RUN` gets its own
+  # wording so a rehearsal is never mistaken for a provisioned VM.
+  local summary
+  if [[ $PROJECT == '(only)' ]]; then
+    summary="applied ${#order[@]} component(s): ${order[*]}"
+  else
+    summary="provisioned project $PROJECT: ${#order[@]} component(s)"
+  fi
+  if ((DRY_RUN)); then
+    log "dry run complete, nothing was changed: $summary"
+  else
+    log "done: $summary"
+  fi
 }
 
 # Sourcing this file defines the components without running anything, which is
 # what the bats suites under tests/ do. Only execute when invoked as a script.
-if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+#
+# The obvious guard, `[[ ${BASH_SOURCE[0]} == "$0" ]]`, fails the other way
+# round: under the documented `bash -c "$(curl ...)"` install, BASH_SOURCE is
+# *unset*, which `set -u` turns into an immediate abort, and `$0` is just
+# `bash`, so the comparison would skip main even without `set -u`. A piped
+# `curl ... | bash` is worse still: BASH_SOURCE[0] becomes a synthetic `main`.
+#
+# `return` succeeds only when the file is being sourced, so the subshell is the
+# test: it runs this line in a copy of the current context and the file is
+# executed rather than sourced in every other case (plain run, symlink such as
+# ~/.local/bin/agentvm, `bash -c "$(curl ...)"`, `curl ... | bash`). The
+# subshell keeps the non-source `return` from reaching the caller, which under
+# `set -e` would abort a sourcing shell, and keeps shellcheck from reading main
+# as unreachable. `2> /dev/null` swallows "can only `return' from a function or
+# sourced script" for the executed case.
+if ! (return 0 2> /dev/null); then
   main "$@"
 fi

@@ -373,3 +373,66 @@ STUB
   component_repos
   [ ! -s "$GIT_LOG" ]
 }
+
+# ----------------------------------------------------------- invocation modes
+
+# The file is both a script and a library: bats `load`s it, provisioning runs it
+# as `bash -c "$(curl ...)"`, and ~/.local/bin/agentvm is a symlink to it. The
+# guard at the bottom has to tell those apart without reading BASH_SOURCE, which
+# is unset under `bash -c` (a `set -u` abort) and a synthetic `main` when piped.
+# `--list` is the probe: it needs no secrets and touches nothing.
+@test "the script runs main when executed, symlinked, piped and via bash -c" {
+  set -e
+  local script="$BATS_TEST_DIRNAME/../agentvm.bash"
+  ln -sfn "$script" "$BATS_TEST_TMPDIR/agentvm"
+
+  run env AGENTVM_PROJECT=default bash "$script" --list
+  [ "$status" -eq 0 ]
+  [[ $output == *"project: default"* ]]
+
+  # ~/.local/bin/agentvm is exactly this case
+  run env AGENTVM_PROJECT=default "$BATS_TEST_TMPDIR/agentvm" --list
+  [ "$status" -eq 0 ]
+  [[ $output == *"project: default"* ]]
+
+  # the documented install: bash -c "$(curl -fsSL https://mfgo.link/agentvm)"
+  run env AGENTVM_PROJECT=default bash -c "$(cat "$script")" agentvm --list
+  [ "$status" -eq 0 ]
+  [[ $output == *"project: default"* ]]
+
+  # and the piped variant, where BASH_SOURCE[0] is the synthetic `main`
+  run env AGENTVM_PROJECT=default bash -s -- --list < "$script"
+  [ "$status" -eq 0 ]
+  [[ $output == *"project: default"* ]]
+}
+
+@test "the script only defines its functions when sourced" {
+  set -e
+  # A sourced file must not start provisioning, and its `return` must not abort
+  # the sourcing shell either: this caller runs under `set -euo pipefail`.
+  run bash -c 'set -euo pipefail; . "$1"; declare -F main > /dev/null; echo sourced' _ \
+    "$BATS_TEST_DIRNAME/../agentvm.bash"
+  [ "$status" -eq 0 ]
+  [ "$output" = sourced ]
+}
+
+@test "main reports success instead of ending on installer output" {
+  set -e
+  # A one-component registry, with the component stubbed out: this checks
+  # main's closing message, not apt. `base` consumes no secret, so the
+  # preflight passes and the sweep is skipped.
+  COMPONENTS=(base)
+  KNOWN=([base]=1)
+  component_base() { :; }
+
+  run main --only base
+  [ "$status" -eq 0 ]
+  [[ $output == *"done: applied 1 component(s): base"* ]]
+
+  # A rehearsal must never read as a provisioned VM.
+  DRY_RUN=1
+  run main --only base
+  [ "$status" -eq 0 ]
+  [[ $output == *"dry run complete, nothing was changed"* ]]
+  [[ $output != *"done: applied"* ]]
+}

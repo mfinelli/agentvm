@@ -539,7 +539,7 @@ rejected _before_ the file is deleted, file secrets land at 0600),
 `install_config` idempotency, and `component_repos`' URL and directory rules
 with a stubbed git.
 
-Two things about the suite are deliberate and easy to break:
+Three things about the suite are deliberate and easy to break:
 
 - **Every test starts with `set -e`.** bats judges a test by the status of its
   _last_ command, so a failing assertion in the middle is silently ignored if a
@@ -549,6 +549,13 @@ Two things about the suite are deliberate and easy to break:
 - **The script's `run` helper is kept as `agentvm_run`.** It shadows bats'
   `run`, and calling it through bats' `run` does not work: the inner call
   re-resolves `run` in the subshell and finds bats' version again.
+- **The entry-point guard is `if ! (return 0 2> /dev/null); then main; fi`, not
+  a `BASH_SOURCE` comparison.** The file is a library when bats `load`s it and a
+  script when provisioning runs it, and `BASH_SOURCE` cannot tell those apart
+  reliably: under `bash -c "$(curl ...)"` it is _unset_, which `set -u` turns
+  into an abort, and under `curl ... | bash` it is a synthetic `main`. A
+  `return` only succeeds in a sourced file, so the subshell is the real test.
+  Test 32 exercises every invocation mode; keep it passing.
 
 ## Limitations
 

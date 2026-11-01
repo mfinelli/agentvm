@@ -45,6 +45,7 @@ VMs are named `omp-PROJECT`. The script strips the prefix and runs
 | --------------- | ------------------------------ |
 | `omp-agentvm`   | `project_agentvm`              |
 | `omp-opentower` | `project_opentower`            |
+| `omp-recueil`   | `project_recueil`              |
 | anything else   | `project_default` (everything) |
 
 `AGENTVM_PROJECT` overrides the detection, which is useful when testing or when
@@ -67,6 +68,13 @@ project_opentower() {
   use buildtools rust
   use ghidra dosbox rea
   apt_extra libasound2-dev
+}
+
+project_recueil() {
+  use_standard
+  use buildtools go node docker
+  mise_global sqlc@1
+  repo mfinelli/recueil
 }
 ```
 
@@ -117,6 +125,9 @@ project_agentvm() {
 `owner/name` is shorthand for `https://github.com/owner/name.git`; a full https
 or ssh URL is used verbatim, and the directory name comes from the URL.
 
+Clones are `--recurse-submodules`, and an existing checkout gets
+`git submodule update --init --recursive` on every run.
+
 `--list` reports them as `repos: mfinelli/agentvm`.
 
 ### Components
@@ -126,7 +137,7 @@ and **its order is the execution order**:
 
 ```
 base editor git bash screen fonts java ghidra buildtools re rust dosbox \
-  mise node omp ntfy rea agentvm repos
+  mise go node docker omp ntfy rea agentvm repos
 ```
 
 Declaring a dependency doesn't reorder anything; it only widens what a project
@@ -136,6 +147,7 @@ pulls in:
 declare -A DEPENDS=(
   [bash]='git'
   [ghidra]='java'
+  [go]='mise'
   [node]='mise'
   [ntfy]='omp'
   [rea]='node re'
@@ -441,7 +453,9 @@ that was actually stored.
 | `rust`       | rustup + stable toolchain                                                                     |
 | `dosbox`     | dosbox-x                                                                                      |
 | `mise`       | mise, then `~/.local/bin` on PATH                                                             |
-| `node`       | `mise use -g node@lts`                                                                        |
+| `go`         | `mise use -g go@1.27`, `~/go/bin` on PATH for `go install`                                    |
+| `node`       | `mise use -g node@lts pnpm@12`                                                                |
+| `docker`     | docker.io docker-cli docker-compose, daemon enabled, user in the `docker` group               |
 | `omp`        | oh-my-pi, `~/agentvm` PATH entry, Ollama Cloud token, appearance settings                     |
 | `ntfy`       | omp-ntfy plugin, its config file, and the same values in `~/.bashrc`                          |
 | `rea`        | `npx rea-agents setup`                                                                        |

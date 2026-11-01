@@ -335,7 +335,7 @@ STUB
   export HOME="$BATS_TEST_TMPDIR/home"
   declare -ga REPOS=(mfinelli/agentvm)
   component_repos
-  [[ $(cat "$GIT_LOG") == *"clone https://github.com/mfinelli/agentvm.git $HOME/src/agentvm"* ]]
+  [[ $(cat "$GIT_LOG") == *"clone --recurse-submodules https://github.com/mfinelli/agentvm.git $HOME/src/agentvm"* ]]
 }
 
 @test "component_repos keeps an explicit https url and derives the name" {
@@ -344,7 +344,7 @@ STUB
   export HOME="$BATS_TEST_TMPDIR/home"
   declare -ga REPOS=(https://gitlab.com/g/sub/thing.git)
   component_repos
-  [[ $(cat "$GIT_LOG") == *"clone https://gitlab.com/g/sub/thing.git $HOME/src/thing"* ]]
+  [[ $(cat "$GIT_LOG") == *"clone --recurse-submodules https://gitlab.com/g/sub/thing.git $HOME/src/thing"* ]]
 }
 
 @test "component_repos keeps an ssh url" {
@@ -353,7 +353,7 @@ STUB
   export HOME="$BATS_TEST_TMPDIR/home"
   declare -ga REPOS=('git@github.com:o/r.git')
   component_repos
-  [[ $(cat "$GIT_LOG") == *'clone git@github.com:o/r.git'* ]]
+  [[ $(cat "$GIT_LOG") == *'clone --recurse-submodules git@github.com:o/r.git'* ]]
   [[ $(cat "$GIT_LOG") == *"$HOME/src/r"* ]]
 }
 
@@ -366,6 +366,9 @@ STUB
   component_repos
   [[ $(cat "$GIT_LOG") == *"pull --ff-only"* ]]
   [[ $(cat "$GIT_LOG") != *clone* ]]
+  # a checkout made before a submodule existed has it empty, and pull does not
+  # fill it in
+  [[ $(cat "$GIT_LOG") == *"submodule update --init --recursive"* ]]
 }
 
 @test "component_repos refuses to clobber a directory that is not a checkout" {

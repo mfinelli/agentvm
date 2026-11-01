@@ -93,7 +93,9 @@ COMPONENTS=(
   rust
   dosbox
   mise
+  go
   node
+  docker
   omp
   ntfy
   rea
@@ -157,6 +159,7 @@ CONSUMED_SECRETS=()
 declare -A DEPENDS=(
   [bash]='git'
   [ghidra]='java'
+  [go]='mise'
   [node]='mise'
   [ntfy]='omp'
   [rea]='node re'
@@ -234,6 +237,14 @@ project_opentower() {
   use buildtools rust
   use ghidra dosbox rea
   apt_extra libasound2-dev
+}
+
+# recueil: Go service, Svelte frontend and a compose stack to develop against.
+project_recueil() {
+  use_standard
+  use buildtools go node docker
+  mise_global sqlc@1
+  repo mfinelli/recueil
 }
 
 # Anything unrecognised gets everything.
@@ -665,11 +676,61 @@ component_mise() {
   path_add "$HOME/.local/bin"
 }
 
+# Go comes from mise rather than apt: trixie's golang-go is 1.24, and a project
+# whose go.mod says `go 1.27.3` would make every build download a toolchain
+# anyway. Pinning the minor line lets the patch float, while a go.mod that
+# demands something newer is still handled by GOTOOLCHAIN, which is on by
+# default.
+component_go() {
+  run mise use -g go@1.27
+  # mise's shims are not on PATH in this non-interactive shell
+  path_add "$HOME/.local/share/mise/shims"
+  # `go install` writes here, which is how a Go project's lint tools are
+  # normally fetched (errcheck, staticcheck, ...) -- there is no package
+  # manager involved.
+  # shellcheck disable=SC2016 # literal text for ~/.bashrc, expanded at login
+  bashrc_add 'export PATH=$HOME/go/bin:$PATH'
+  path_add "$HOME/go/bin"
+}
+
 component_node() {
   # mise is on PATH thanks to its own component
   run mise use -g node@lts
+  # pnpm is the package manager for the workspaces under ~/src; node bundles
+  # corepack for it, but corepack is no longer distributed from Node 25 and is
+  # experimental besides. A major pin, like every other mise_global entry.
+  run mise use -g pnpm@12
   # mise's shims are not on PATH in this non-interactive shell
   path_add "$HOME/.local/share/mise/shims"
+}
+
+# The daemon, the client and the compose plugin are three packages in Debian:
+# docker.io (dockerd, containerd, the systemd units), docker-cli (/usr/bin/
+# docker) and docker-compose, which installs into
+# /usr/libexec/docker/cli-plugins and is therefore what `docker compose`
+# resolves. docker-cli is only a Recommends of docker.io, so it is named here
+# explicitly.
+component_docker() {
+  apt_install docker.io docker-cli docker-compose
+
+  # Working through sudo is not the point of a dev VM. docker.io's postinst
+  # creates the group; the membership only takes effect in a new login session,
+  # so say that instead of letting the next `docker` call fail with a socket
+  # permission error.
+  local user
+  user=$(id -un)
+  if ! id -nG "$user" | tr ' ' '\n' | grep -qx docker; then
+    run sudo usermod -aG docker "$user"
+    log "note: docker group membership applies from the next login (or: newgrp docker)"
+  fi
+
+  # docker.io's postinst starts the daemon through deb-systemd-invoke when
+  # systemd is running, which it is on the VM. Enabling it explicitly is what
+  # makes a rebuilt box work without a manual `systemctl start`, and the guard
+  # is for the CI container, where there is no init to start anything.
+  if [[ -d /run/systemd/system ]]; then
+    run sudo systemctl enable --now docker
+  fi
 }
 
 component_omp() {
@@ -853,11 +914,14 @@ component_repos() {
       # Existing checkout: update --ff-only so a local branch
       # the operator is working on isn't merged or rebased under them.
       run git -C "$dir" pull --ff-only
+      # A VM built before a submodule was added has an empty submodule
+      # directory, and `pull` does not fill it in.
+      run git -C "$dir" submodule update --init --recursive
     elif [[ -d $dir ]] && [[ -n $(ls -A "$dir") ]]; then
       echo "$dir exists but is not a git checkout; move it aside to re-clone" >&2
       exit 1
     else
-      run git clone "$url" "$dir"
+      run git clone --recurse-submodules "$url" "$dir"
     fi
   done
 }

@@ -83,6 +83,10 @@ jobs:
           ~/.local/bin/omp --version
           ~/.local/bin/mise --version
           ~/.local/share/mise/shims/node --version
+          ~/.local/share/mise/shims/pnpm --version
+          ~/.local/share/mise/shims/go version
+          docker --version
+          docker compose version
           rustup --version
           test -x ~/.local/bin/agentvm
           test -d ~/.agentvm/.git

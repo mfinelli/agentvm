@@ -12,6 +12,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
@@ -46,6 +47,7 @@ jobs:
   # never going to talk to GitHub or Ollama.
   integration:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     container:
       image: debian:trixie
     env:

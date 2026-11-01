@@ -3,11 +3,11 @@ default:
     @just --list
 
 check:
-    prettier -c *.md
+    prettier -c .
     shfmt -s -i 2 -ci -sr -d *.bash
     shellcheck *.bash
 
 fmt:
-    prettier -w *.md
+    prettier -w .
     shfmt -s -i 2 -ci -sr -w *.bash
     just --fmt

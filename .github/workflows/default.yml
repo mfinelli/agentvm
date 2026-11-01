@@ -1,0 +1,26 @@
+---
+name: Default
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - run: npm install -g prettier@3
+
+      - run: sudo apt-get update
+      - run: sudo apt-get install -y just shfmt shellcheck
+
+      - run: just check

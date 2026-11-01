@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -euo pipefail;
+set -euo pipefail
 
 # I'm experimenting with running an agent in a dedicated throwaway VM to keep
 # it isolated from the rest of my system and to give it more autonomy. This
@@ -164,7 +164,7 @@ for c in "${!DEPENDS[@]}"; do
       echo "component $c depends on itself" >&2
       exit 2
     fi
-    if (( POS[$d] > POS[$c] )); then
+    if ((POS[$d] > POS[$c])); then
       echo "component $c depends on $d, but $d runs after $c in COMPONENTS" >&2
       exit 2
     fi
@@ -231,7 +231,7 @@ DRY_RUN=${AGENTVM_DRY_RUN:-0}
 
 log() { printf '\n==> %s\n' "$*"; }
 usage() {
-  cat <<'EOF'
+  cat << 'EOF'
 Usage: agentvm.bash [--list] [--only COMPONENT...]
        agentvm.bash --help
 
@@ -256,12 +256,12 @@ EOF
 }
 run() {
   log "+ $*"
-  (( DRY_RUN )) || "$@"
+  ((DRY_RUN)) || "$@"
 }
 # for `curl | sh` installers, which are fine here: this is a throwaway VM
 run_sh() {
   log "+ sh -c '$1'"
-  (( DRY_RUN )) || bash -c "$1"
+  ((DRY_RUN)) || bash -c "$1"
 }
 apt_install() {
   run sudo apt-get install -y "$@"
@@ -271,22 +271,22 @@ apt_install() {
 # `set -e` is unsafe (see component_mise).
 path_add() {
   local dir=$1
-  (( DRY_RUN )) || [[ -d $dir ]] || return 0
+  ((DRY_RUN)) || [[ -d $dir ]] || return 0
   case ":$PATH:" in
     *":$dir:"*) return 0 ;;
   esac
   log "+ PATH=$dir:\$PATH"
-  (( DRY_RUN )) || export PATH="$dir:$PATH"
+  ((DRY_RUN)) || export PATH="$dir:$PATH"
 }
 
 # append a line to ~/.bashrc once, so re-running the script stays clean
 bashrc_add() {
   local line=$1
-  if grep -qxF -- "$line" "$HOME/.bashrc" 2>/dev/null; then
+  if grep -qxF -- "$line" "$HOME/.bashrc" 2> /dev/null; then
     return 0
   fi
   log "+ ~/.bashrc += $line"
-  (( DRY_RUN )) || printf '%s\n' "$line" >> "$HOME/.bashrc"
+  ((DRY_RUN)) || printf '%s\n' "$line" >> "$HOME/.bashrc"
 }
 
 # Write a config file from stdin, replacing it only when the content differs.
@@ -295,11 +295,11 @@ bashrc_add() {
 install_config() {
   local dest=$1 content
   content=$(cat)
-  if [[ -f $dest ]] && [[ $(<"$dest") == "$content" ]]; then
+  if [[ -f $dest ]] && [[ $(< "$dest") == "$content" ]]; then
     return 0
   fi
   log "+ $dest"
-  (( DRY_RUN )) && return 0
+  ((DRY_RUN)) && return 0
   mkdir -p "$(dirname "$dest")"
   printf '%s\n' "$content" > "$dest"
 }
@@ -372,7 +372,7 @@ take_secret() {
     exit 2
   fi
   CONSUMED_SECRETS+=("$s")
-  if (( DRY_RUN )); then
+  if ((DRY_RUN)); then
     log "would install secret $s -> $dest"
     return 0
   fi
@@ -393,13 +393,20 @@ secret_value() {
     echo "secret $s has a destination; use take_secret" >&2
     exit 2
   fi
+  # Reject an empty secret before deleting it. Consuming first would delete the
+  # evidence, so a retry would fail at the preflight instead of showing the same
+  # error, and the operator would have no file left to inspect.
+  if ((! DRY_RUN)) && [[ ! -s $SECRET_DIR/$s ]]; then
+    echo "secret $s is empty" >&2
+    exit 3
+  fi
   CONSUMED_SECRETS+=("$s")
-  if (( DRY_RUN )); then
+  if ((DRY_RUN)); then
     log "would consume secret $s" >&2
     return 0
   fi
   local -n out=$var
-  out=$(<"$SECRET_DIR/$s")
+  out=$(< "$SECRET_DIR/$s")
   rm -f "$SECRET_DIR/$s"
   log "consumed secret $s" >&2
 }
@@ -428,14 +435,9 @@ component_git() {
   local git_name git_email token
   secret_value git-name git_name
   secret_value git-email git_email
-  token=${SECRET_DEST[github-token]}
+  token=${SECRET_DEST[github - token]}
   take_secret github-token
-  (( DRY_RUN )) && return 0
-
-  if [[ -z $git_name || -z $git_email ]]; then
-    echo "git-name and git-email secrets are empty" >&2
-    exit 3
-  fi
+  ((DRY_RUN)) && return 0
 
   run git config --global user.name "$git_name"
   run git config --global user.email "$git_email"
@@ -491,7 +493,7 @@ component_bash() {
   bashrc_add 'export BASH_IT_COMMAND_DURATION=true'
   bashrc_add 'export COMMAND_DURATION_MIN_SECONDS=1'
   # last, so every setting above is in scope when bash-it loads
-  bashrc_add "source \"\${BASH_IT?}/bash_it.sh\""
+  bashrc_add 'source "${BASH_IT?}/bash_it.sh"'
 }
 
 component_screen() {
@@ -517,7 +519,7 @@ component_screen() {
   #
   # There is no UTC escape: '%c' is local time, so a backtick runs date(1).
   # The two 60s numbers are the output lifespan and the redraw interval.
-  install_config "$HOME/.screenrc" <<'EOF'
+  install_config "$HOME/.screenrc" << 'EOF'
 startup_message off
 vbell off
 defscrollback 10000
@@ -693,7 +695,7 @@ component_agentvm() {
     return 0
   fi
   log "+ $link -> $dir/agentvm.bash"
-  (( DRY_RUN )) && return 0
+  ((DRY_RUN)) && return 0
   mkdir -p "$(dirname "$link")"
   # Replace a stale link, but do not clobber a real file someone put there.
   if [[ -e $link ]] && [[ ! -L $link ]]; then
@@ -720,7 +722,7 @@ update_agentvm() {
 
   # The running copy is this file, which the pull just changed underneath us.
   # Say so only when it actually moved, so a no-op `--update` stays quiet.
-  if [[ $before != "$after" ]] && (( ! DRY_RUN )) &&
+  if [[ $before != "$after" ]] && ((! DRY_RUN)) &&
     [[ $(readlink -f "$0") == "$(readlink -f "$dir/agentvm.bash")" ]]; then
     log "note: $dir/agentvm.bash moved to $after; the new version runs next time" >&2
   fi
@@ -741,14 +743,14 @@ resolved() {
 
 # Every required secret must be on disk before anything is installed.
 preflight_secrets() {
-  if (( ! ${#REQUIRED_SECRETS[@]} )); then
+  if ((! ${#REQUIRED_SECRETS[@]})); then
     return 0
   fi
   local s missing=()
   for s in "${REQUIRED_SECRETS[@]}"; do
     [[ -f $SECRET_DIR/$s ]] || missing+=("$s")
   done
-  if (( ${#missing[@]} )); then
+  if ((${#missing[@]})); then
     echo "missing required secrets: ${missing[*]}" >&2
     if [[ $PROJECT == '(only)' ]]; then
       echo "re-run vm-provision for this host" >&2
@@ -776,10 +778,10 @@ sweep_secrets() {
       leftover+=("$n")
     fi
   done
-  if (( ${#leftover[@]} )); then
+  if ((${#leftover[@]})); then
     log "warning: unused secrets removed: ${leftover[*]}" >&2
   fi
-  if (( DRY_RUN )); then
+  if ((DRY_RUN)); then
     log "would remove $SECRET_DIR"
     return 0
   fi
@@ -789,7 +791,7 @@ sweep_secrets() {
 main() {
   local c order=() only=() list=0
 
-  while (( $# )); do
+  while (($#)); do
     case $1 in
       --list)
         list=1
@@ -798,7 +800,7 @@ main() {
       --only)
         shift
         # take everything up to the next flag, so `--only a b` works too
-        while (( $# )) && [[ $1 != --* ]]; do
+        while (($#)) && [[ $1 != --* ]]; do
           only+=("$1")
           shift
         done
@@ -827,7 +829,7 @@ main() {
   done
 
   # `--only a,b`, `--only a b` and `--only=a,b` all mean the same thing.
-  if (( ${#only[@]} )); then
+  if ((${#only[@]})); then
     local -a split=() parts=()
     local name
     for name in "${only[@]}"; do
@@ -840,7 +842,7 @@ main() {
     done
   fi
 
-  if (( ${#only[@]} )); then
+  if ((${#only[@]})); then
     # A targeted apply ignores the project, but not the dependency graph: the
     # point is to get one component and everything it needs, not to reimplement
     # DEPENDS by hand.
@@ -867,7 +869,7 @@ main() {
   mapfile -t order < <(resolved)
   resolve_secrets
 
-  if (( list )); then
+  if ((list)); then
     if [[ $PROJECT == '(only)' ]]; then
       echo "components: ${only[*]}"
     else
@@ -880,10 +882,10 @@ main() {
         echo "  $c (dependency)"
       fi
     done
-    if (( ${#EXTRA_PKGS[@]} )); then
+    if ((${#EXTRA_PKGS[@]})); then
       echo "extra packages: ${EXTRA_PKGS[*]}"
     fi
-    if (( ${#REQUIRED_SECRETS[@]} )); then
+    if ((${#REQUIRED_SECRETS[@]})); then
       echo "secrets: ${REQUIRED_SECRETS[*]}"
     fi
     return 0
@@ -900,7 +902,7 @@ main() {
     component_$c
   done
 
-  if (( ${#EXTRA_PKGS[@]} )); then
+  if ((${#EXTRA_PKGS[@]})); then
     apt_install "${EXTRA_PKGS[@]}"
   fi
 
@@ -908,7 +910,7 @@ main() {
   # component that needs no secret must not delete secrets left behind by an
   # earlier run that failed before consuming them (or pushed by an operator
   # who never ran anything else).
-  if [[ -d $SECRET_DIR ]] && (( ${#CONSUMED_SECRETS[@]} )); then
+  if [[ -d $SECRET_DIR ]] && ((${#CONSUMED_SECRETS[@]})); then
     sweep_secrets
   fi
 }

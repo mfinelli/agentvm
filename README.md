@@ -33,8 +33,8 @@ Or from a checkout:
 
 Secrets are pushed separately, before running the script. You need **two
 terminals** for that: one logged into the guest, one on your host to push the
-secrets. See [You need two terminals](#you-need-two-terminals) before you
-start, or the secrets will be discarded before the script can read them.
+secrets. See [You need two terminals](#you-need-two-terminals) before you start,
+or the secrets will be discarded before the script can read them.
 
 ## Selecting what gets installed
 
@@ -42,13 +42,13 @@ VMs are named `omp-PROJECT`. The script strips the prefix and runs
 `project_PROJECT`:
 
 | Hostname        | Project function               |
-|-----------------|--------------------------------|
+| --------------- | ------------------------------ |
 | `omp-agentvm`   | `project_agentvm`              |
 | `omp-opentower` | `project_opentower`            |
 | anything else   | `project_default` (everything) |
 
-`AGENTVM_PROJECT` overrides the detection, which is useful when testing or
-when the hostname does not follow the convention:
+`AGENTVM_PROJECT` overrides the detection, which is useful when testing or when
+the hostname does not follow the convention:
 
 ```bash
 AGENTVM_PROJECT=opentower ./agentvm.bash
@@ -56,8 +56,8 @@ AGENTVM_PROJECT=opentower ./agentvm.bash
 
 ### Projects
 
-A project is a function that declares what it wants but doesn't install
-anything itself. Most projects start from the shared baseline and add to it:
+A project is a function that declares what it wants but doesn't install anything
+itself. Most projects start from the shared baseline and add to it:
 
 ```bash
 use_standard      # base editor git bash screen fonts mise omp ntfy agentvm
@@ -75,8 +75,8 @@ Promote it to a component when it makes sense.
 
 ### Components
 
-Each component is one `component_<name>` function. `COMPONENTS` is the
-registry, and **its order is the execution order**:
+Each component is one `component_<name>` function. `COMPONENTS` is the registry,
+and **its order is the execution order**:
 
 ```
 base editor git bash screen fonts java ghidra buildtools re rust dosbox \
@@ -96,12 +96,12 @@ declare -A DEPENDS=(
 )
 ```
 
-So `use rea` is enough to get `node`, `mise` and `re` too. Three invariants
-are checked at startup and abort with exit 2:
+So `use rea` is enough to get `node`, `mise` and `re` too. Three invariants are
+checked at startup and abort with exit 2:
 
 - a dependency must exist in `COMPONENTS`;
 - a component may not depend on itself;
-- a dependency must appear *earlier* in `COMPONENTS` than its dependent.
+- a dependency must appear _earlier_ in `COMPONENTS` than its dependent.
 
 ### Applying a single component later
 
@@ -116,13 +116,13 @@ project entirely:
 ./agentvm.bash --only screen --list   # preview first
 ```
 
-`--only` also works on a host whose name does not follow `omp-PROJECT`, which
-is the point: it is for patching a machine that is already set up.
+`--only` also works on a host whose name does not follow `omp-PROJECT`, which is
+the point: it is for patching a machine that is already set up.
 
 A targeted apply does not need secrets unless the components it names consume
 one, and it **never sweeps** `/dev/shm/secrets`. Sweeping is a full-run
-operation, because a partial run cannot tell an unconsumed secret from one
-that belongs to a run still to come.
+operation, because a partial run cannot tell an unconsumed secret from one that
+belongs to a run still to come.
 
 ### Self-install
 
@@ -136,8 +136,8 @@ agentvm --only <new component>  # apply something added since this VM was built
 ```
 
 That is the upgrade path for a VM built from an older revision: update the
-checkout, then apply the component that did not exist when the VM was made.
-No path to remember — `~/.local/bin` is where `mise` and `omp` already live.
+checkout, then apply the component that did not exist when the VM was made. No
+path to remember — `~/.local/bin` is where `mise` and `omp` already live.
 
 Three details worth knowing:
 
@@ -148,10 +148,10 @@ Three details worth knowing:
   `~/.local/bin/agentvm` exists but is not a symlink, the component stops and
   says which variable (`AGENTVM_DIR`, `AGENTVM_LINK`) to set. A stale symlink
   pointing somewhere else is repointed.
-- **No secret is required.** It installs the `git` *package* if the binary is
-  missing, rather than depending on the `git` component, which would also
-  demand the identity and token secrets. Fetching a public repo should not
-  need a token, and a VM that was never provisioned can still self-install.
+- **No secret is required.** It installs the `git` _package_ if the binary is
+  missing, rather than depending on the `git` component, which would also demand
+  the identity and token secrets. Fetching a public repo should not need a
+  token, and a VM that was never provisioned can still self-install.
 
 ### Inspecting a project without changing anything
 
@@ -183,13 +183,13 @@ omp
 ntfy
 rea
 extra packages: libasound2-dev
-secrets: git-name git-email github-token
+secrets: git-name git-email github-token ollama-token
 ```
 
 ## Secrets
 
-No secrets are baked into the VM image. Secrets are pushed into the guest
-at `/dev/shm/secrets` (RAM only) by `vm-provision`, which lives in my
+No secrets are baked into the VM image. Secrets are pushed into the guest at
+`/dev/shm/secrets` (RAM only) by `vm-provision`, which lives in my
 [dotfiles](https://github.com/mfinelli/dotfiles) repo
 (`roles/zsh/files/libvirt.zsh`) alongside the other libvirt helpers.
 
@@ -210,29 +210,29 @@ vm-provision omp-agentvm
 
 ### You need two terminals
 
-`/dev/shm/secrets` only survives while the target user has a login session
-open. `systemd-logind` defaults to `RemoveIPC=yes`, and when the last session
-of a user ends it unlinks every `/dev/shm` entry owned by that UID. The SSH
-connection `vm-provision` uses is its own session, so provisioning into a VM
-you are not otherwise logged into deletes the secrets again the moment that
+`/dev/shm/secrets` only survives while the target user has a login session open.
+`systemd-logind` defaults to `RemoveIPC=yes`, and when the last session of a
+user ends it unlinks every `/dev/shm` entry owned by that UID. The SSH
+connection `vm-provision` uses is its own session, so provisioning into a VM you
+are not otherwise logged into deletes the secrets again the moment that
 connection closes (i.e., before `agentvm.bash` can read them).
 
 Keep a session open for the whole sequence:
 
 1. **Terminal A — inside the guest.** `vm-ssh omp-agentvm`, or a VNC/console
-   session (`vm-vnc omp-agentvm`). Leave it logged in. Any session for the
-   VM's user pins the user record and keeps the cleanup from running.
-2. **Terminal B — on your main host.** `vm-provision omp-agentvm`, then run
-   the setup script over SSH in that same window:
+   session (`vm-vnc omp-agentvm`). Leave it logged in. Any session for the VM's
+   user pins the user record and keeps the cleanup from running.
+2. **Terminal B — on your main host.** `vm-provision omp-agentvm`, then run the
+   setup script over SSH in that same window:
 
    ```bash
    vm-provision omp-agentvm
    vm-ssh omp-agentvm 'bash -c "$(curl -fsSL https://mfgo.link/agentvm)"'
    ```
 
-   Pass the remote command as a single quoted argument: `vm-ssh` hands its
-   extra arguments straight to `ssh`, which joins them and lets the *remote*
-   shell re-split the line.
+   Pass the remote command as a single quoted argument: `vm-ssh` hands its extra
+   arguments straight to `ssh`, which joins them and lets the _remote_ shell
+   re-split the line.
 
    Do not log out of Terminal A, and do not let it idle out, until the run
    finishes. If the guest is a desktop VM with GDM auto-login, the graphical
@@ -258,8 +258,10 @@ declare -A SECRET_USERS=(         # which component consumes it
 )
 ```
 
-Components read them with `secret_value VAR` (a value) or `take_secret`
-(a file). The lifecycle is:
+Components read them with `secret_value VAR` (a value) or `take_secret` (a
+file). A value secret that is empty is rejected **before** it is deleted, so a
+retry reports the same error instead of failing at the preflight with the
+evidence gone. The lifecycle is:
 
 ```mermaid
 flowchart LR
@@ -275,13 +277,13 @@ flowchart LR
 - **Consumed secrets are installed and deleted**; a second run without
   re-provisioning therefore fails loudly. That is deliberate: the script is a
   one-shot.
-- **Leftovers are warned about but removed.** Provisioning pushes a fixed
-  set, so a project that installs no node still receives `npmrc`. Unknown names
-  are reported distinctly (`npmrc (unknown)`) to make a typo findable.
+- **Leftovers are warned about but removed.** Provisioning pushes a fixed set,
+  so a project that installs no node still receives `npmrc`. Unknown names are
+  reported distinctly (`npmrc (unknown)`) to make a typo findable.
 - **An aborted run doesn't sweep anything**, so fixing the cause and re-running
   works.
-- **`--list` and dry run don't consume or delete.** Both still run the
-  preflight check, so a missing secret is reported in dry run too.
+- **`--list` and dry run don't consume or delete.** Both still run the preflight
+  check, so a missing secret is reported in dry run too.
 
 ## Git authentication
 
@@ -312,28 +314,92 @@ Create a token with `contents: read` only:
 https://github.com/settings/personal-access-tokens/new?name=VM+read+token&contents=read&expires_in=45
 ```
 
+## oh-my-pi
+
+omp keeps its configuration in `~/.omp/agent/config.yml` (mode `0600`), which
+`omp config` maintains. `component_omp` writes the settings that would otherwise
+need a first-run wizard, using the same command:
+
+| Key                  | Value                              | Why                                                        |
+| -------------------- | ---------------------------------- | ---------------------------------------------------------- |
+| `modelRoles.default` | `ollama-cloud/deepseek-v4.1-flash` | the startup model; `/model` still overrides it per session |
+| `composer.shape`     | `pi`                               | the "Pi" composer from the first-run picker                |
+| `symbolPreset`       | `nerd`                             | Nerd Font glyphs, matching the `fonts` component           |
+| `theme.dark`         | `titanium`                         |                                                            |
+| `theme.light`        | `light`                            |                                                            |
+
+Override any of them without editing the script:
+
+```bash
+AGENTVM_OMP_MODEL=ollama-cloud/kimi-k2 \
+AGENTVM_OMP_SYMBOL_PRESET=unicode \
+  ./agentvm.bash --only omp
+```
+
+`omp config list` prints every key with its allowed values, so the set of valid
+choices is discoverable on the VM rather than fixed here. `theme.dark` and
+`theme.light` are a pair: omp picks between them from the terminal's reported
+background, which is also what `--use-theme` overrides for one run.
+
+`modelRoles` is a record and cannot be set key by key —
+`omp config set modelRoles.default …` fails with `Unknown setting`. The
+component therefore reads the current record and merges `default` into it, so a
+`smol`, `slow` or `plan` role chosen earlier survives.
+
+### The token
+
+`ollama-token` holds **only the literal API key** — the same string you would
+give `OLLAMA_CLOUD_API_KEY`. It is not the JSON envelope:
+
+```bash
+# ~/.local/share/vm-secrets/ollama-token.asc contains exactly this:
+sk-ollama-...
+```
+
+The envelope exists only inside the component. `omp auth import` wants a
+versioned document, so the component builds it _around_ your token:
+
+```bash
+printf '%s' "$envelope" | omp auth import -
+```
+
+Two consequences worth stating, since both are easy to get wrong:
+
+- **Do not paste an auth export.** `omp auth export` output is a JSON envelope;
+  putting it in the secret file would be accepted by `omp auth import` and
+  stored as the literal key, failing only at the first API call. The component
+  rejects a token that starts with `{` and says which file to inspect.
+- **A trailing newline is fine.** `secret_value` strips it, so both
+  `echo KEY > file` and `printf KEY > file` work.
+
+The envelope is built by `python3` so a key containing a quote or backslash
+cannot corrupt the JSON, and it is passed on **stdin** rather than as an
+argument — an argument is visible in `/proc/<pid>/cmdline` to every user on the
+machine. Verify the result with `omp token ollama-cloud`, which prints the key
+that was actually stored.
+
 ## What gets installed
 
-| Component | Contents |
-|---|---|
-| `base` | curl wget htop bat python3 python3-pip magic-wormhole imagemagick 7zip libarchive-tools unzip |
-| `editor` | vim, `EDITOR=vim` |
-| `git` | git, identity from secrets, host-scoped token helper |
-| `bash` | bash-it in `~/.bashit` (minimal theme, command duration), `~/src` |
-| `screen` | screen, `~/.screenrc` with a status line (see below) |
-| `fonts` | AdwaitaMono Nerd Font |
-| `java` | openjdk-25-jdk |
-| `ghidra` | Ghidra 12.2 in `~/Downloads`, `GHIDRA_INSTALL_DIR` |
-| `buildtools` | gcc make pkg-config |
-| `re` | binutils binwalk |
-| `rust` | rustup + stable toolchain |
-| `dosbox` | dosbox-x |
-| `mise` | mise, then `~/.local/bin` on PATH |
-| `node` | `mise use -g node@lts` |
-| `omp` | oh-my-pi, `~/.local/bin` on PATH |
-| `ntfy` | omp-ntfy plugin, `NTFY_SERVER`/`NTFY_TOPIC` |
-| `rea` | `npx rea-agents setup` |
-| `agentvm` | checkout at `~/.agentvm`, symlinked to `~/.local/bin/agentvm` |
+| Component    | Contents                                                                                      |
+| ------------ | --------------------------------------------------------------------------------------------- |
+| `base`       | curl wget htop bat python3 python3-pip magic-wormhole imagemagick 7zip libarchive-tools unzip |
+| `editor`     | vim, `EDITOR=vim`                                                                             |
+| `git`        | git, identity from secrets, host-scoped token helper                                          |
+| `bash`       | bash-it in `~/.bashit` (minimal theme, command duration), `~/src`                             |
+| `screen`     | screen, `~/.screenrc` with a status line (see below)                                          |
+| `fonts`      | AdwaitaMono Nerd Font                                                                         |
+| `java`       | openjdk-25-jdk                                                                                |
+| `ghidra`     | Ghidra 12.2 in `~/Downloads`, `GHIDRA_INSTALL_DIR`                                            |
+| `buildtools` | gcc make pkg-config                                                                           |
+| `re`         | binutils binwalk                                                                              |
+| `rust`       | rustup + stable toolchain                                                                     |
+| `dosbox`     | dosbox-x                                                                                      |
+| `mise`       | mise, then `~/.local/bin` on PATH                                                             |
+| `node`       | `mise use -g node@lts`                                                                        |
+| `omp`        | oh-my-pi, `~/agentvm` PATH entry, Ollama Cloud token, appearance settings                     |
+| `ntfy`       | omp-ntfy plugin, `NTFY_SERVER`/`NTFY_TOPIC`                                                   |
+| `rea`        | `npx rea-agents setup`                                                                        |
+| `agentvm`    | checkout at `~/.agentvm`, symlinked to `~/.local/bin/agentvm`                                 |
 
 `~/.bashrc` lines are appended idempotently: re-running the script does not
 duplicate them. `~/.screenrc` is written whole, and only when its content
@@ -342,8 +408,8 @@ silently.
 
 ## Screen
 
-Working over SSH means two jobs share one terminal: the agent, and whatever
-you are doing next to it. `component_screen` installs screen and writes a
+Working over SSH means two jobs share one terminal: the agent, and whatever you
+are doing next to it. `component_screen` installs screen and writes a
 `~/.screenrc` whose last line is:
 
 ```
@@ -361,13 +427,13 @@ you are doing next to it. `component_screen` installs screen and writes a
 
 Two defaults worth knowing:
 
-- `C-a` is still the command character. omp binds `C-a` to "move to line
-  start", so inside the agent that key now needs `C-a a` to reach it.
-- Window 0 is a plain shell. A broken or absent `omp` cannot then
-  leave you with a dead window, and you choose what each window runs. The
-  last `screen -t` line in `.screenrc` is the window screen lands on — a
-  `select` line does not do this for a detached session — so `agent` is
-  listed last to make it the one you attach to.
+- `C-a` is still the command character. omp binds `C-a` to "move to line start",
+  so inside the agent that key now needs `C-a a` to reach it.
+- Window 0 is a plain shell. A broken or absent `omp` cannot then leave you with
+  a dead window, and you choose what each window runs. The last `screen -t` line
+  in `.screenrc` is the window screen lands on — a `select` line does not do
+  this for a detached session — so `agent` is listed last to make it the one you
+  attach to.
 
 ## Adding a project
 

@@ -212,6 +212,7 @@ use_standard() {
 
 project_agentvm() {
   use_standard
+  apt_extra shellcheck shfmt
   npm_global prettier@3
 }
 

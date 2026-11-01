@@ -22,7 +22,7 @@ jobs:
       - run: npm install -g prettier@3
 
       - run: sudo apt-get update
-      - run: sudo apt-get install -y just shfmt shellcheck
+      - run: sudo apt-get install -y bats just shfmt shellcheck
 
       - uses: jdx/mise-action@v5
         with:
@@ -32,6 +32,7 @@ jobs:
       - run: just check
         env:
           JUST_UNSTABLE: "true" # needed for --fmt
+      - run: just test
 
   # Runs the actual script end to end in a real Debian trixie container.
   # `project_default` selects every component, which is the point: one run

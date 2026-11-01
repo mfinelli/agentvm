@@ -524,6 +524,32 @@ becomes redundant.
 
 Name the VM `omp-<name>` and the project function is picked up automatically.
 
+## Tests
+
+`bats` tests live in `tests/` and are run with `just test`:
+
+```bash
+just test              # every test
+just test -f secrets   # only tests whose name matches
+```
+
+The suite covers the parts of `agentvm.bash` that touch neither the network nor
+the system: `_want`'s dependency walk, the secret lifecycle (empty secrets are
+rejected _before_ the file is deleted, file secrets land at 0600),
+`install_config` idempotency, and `component_repos`' URL and directory rules
+with a stubbed git.
+
+Two things about the suite are deliberate and easy to break:
+
+- **Every test starts with `set -e`.** bats judges a test by the status of its
+  _last_ command, so a failing assertion in the middle is silently ignored if a
+  later one passes — a test that reads `[ "$status" -eq 3 ]` followed by
+  `[ -f "$x" ]` passes even when the status is wrong. `set -e` makes the first
+  failure fatal.
+- **The script's `run` helper is kept as `agentvm_run`.** It shadows bats'
+  `run`, and calling it through bats' `run` does not work: the inner call
+  re-resolves `run` in the subshell and finds bats' version again.
+
 ## Limitations
 
 - Throwaway VM by design: the user gets `NOPASSWD` sudo, and the agent is root

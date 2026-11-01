@@ -217,7 +217,7 @@ use_standard() {
 
 project_agentvm() {
   use_standard
-  apt_extra shellcheck shfmt
+  apt_extra bats shellcheck shfmt
   npm_global prettier@3
   mise_global "aqua:rhysd/actionlint@1"
   repo mfinelli/agentvm mfinelli/dotfiles
@@ -1064,4 +1064,8 @@ main() {
   fi
 }
 
-main "$@"
+# Sourcing this file defines the components without running anything, which is
+# what the bats suites under tests/ do. Only execute when invoked as a script.
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi

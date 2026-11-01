@@ -6,8 +6,11 @@ check:
     just --fmt --check
     prettier -c .
     shfmt -s -i 2 -ci -sr -d *.bash
-    shellcheck *.bash
+    shellcheck *.bash tests/*.bats
     actionlint
+
+test *ARGS:
+    bats {{ ARGS }} tests/
 
 fmt:
     prettier -w .

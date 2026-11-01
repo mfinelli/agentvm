@@ -443,7 +443,7 @@ that was actually stored.
 | `mise`       | mise, then `~/.local/bin` on PATH                                                             |
 | `node`       | `mise use -g node@lts`                                                                        |
 | `omp`        | oh-my-pi, `~/agentvm` PATH entry, Ollama Cloud token, appearance settings                     |
-| `ntfy`       | omp-ntfy plugin, `NTFY_SERVER`/`NTFY_TOPIC`                                                   |
+| `ntfy`       | omp-ntfy plugin, its config file, and the same values in `~/.bashrc`                          |
 | `rea`        | `npx rea-agents setup`                                                                        |
 | `agentvm`    | checkout at `~/.agentvm`, symlinked to `~/.local/bin/agentvm`                                 |
 | `repos`      | full clones of `repo` declarations in `~/src`                                                 |
@@ -563,8 +563,9 @@ Three things about the suite are deliberate and easy to break:
   in practice. Secrets are readable by the agent while it runs.
 - One-shot: a second run fails at the secret preflight. Re-run `vm-provision`
   first.
-- `ntfy` hardcodes `NTFY_SERVER=http://192.168.123.1:8081`, the libvirt NAT
-  gateway. Adjust for a different network.
+- `ntfy` defaults to `http://192.168.123.1:8081`, the libvirt NAT gateway. Set
+  `AGENTVM_NTFY_SERVER` and/or `AGENTVM_NTFY_TOPIC` for a different network or
+  topic.
 - `vm-provision`, `vm-new` and the rest of the VM lifecycle live in my
   [dotfiles](https://github.com/mfinelli/dotfiles) repo.
 

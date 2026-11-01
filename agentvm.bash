@@ -73,6 +73,12 @@ OMP_THEME_DARK=${AGENTVM_OMP_THEME_DARK:-titanium}
 OMP_THEME_LIGHT=${AGENTVM_OMP_THEME_LIGHT:-light}
 OMP_MODEL=${AGENTVM_OMP_MODEL:-ollama-cloud/deepseek-v4.1-flash}
 
+# omp-ntfy settings, applied by component_ntfy. The libvirt NAT gateway is the
+# default because that is where a self-hosted ntfy usually listens from the
+# guest's point of view.
+NTFY_SERVER=${AGENTVM_NTFY_SERVER:-http://192.168.123.1:8081}
+NTFY_TOPIC=${AGENTVM_NTFY_TOPIC:-omp}
+
 COMPONENTS=(
   base
   editor
@@ -740,8 +746,31 @@ PY
 
 component_ntfy() {
   # https://github.com/hakkm/omp-ntfy
-  bashrc_add 'export NTFY_SERVER=http://192.168.123.1:8081'
-  bashrc_add 'export NTFY_TOPIC=omp'
+  #
+  # The settings go in the plugin's config file, not just ~/.bashrc. omp-ntfy
+  # resolves its config as `{...env defaults, ...saved}` -- the file wins over
+  # NTFY_TOPIC/NTFY_SERVER, and the plugin writes that file with a *random*
+  # topic and https://ntfy.sh the first time it runs without one. So exporting
+  # the variables only worked for a login shell whose first /ntfy had not
+  # happened yet; after that the file shadowed them, and a non-interactive omp
+  # (which never reads ~/.bashrc) fell back to a generated topic entirely.
+  # Seeding the file is what makes the setting authoritative and independent of
+  # how omp was started. The file is not something to edit by hand: the plugin
+  # owns it and /ntfy topic rewrites it with the operator's choice, which this
+  # correctly leaves alone only if they agree -- a re-run restores these values,
+  # so an operator wanting different ones sets AGENTVM_NTFY_TOPIC/SERVER.
+  install_config "$HOME/.omp/agent/omp-ntfy.json" << EOF
+{
+  "topic": "$NTFY_TOPIC",
+  "server": "$NTFY_SERVER",
+  "maxTextLength": 350
+}
+EOF
+
+  # Still exported: the plugin reads NTFY_TOPIC/NTFY_SERVER as its defaults, so
+  # a shell started after this run works even before the file is read.
+  bashrc_add "export NTFY_SERVER=$NTFY_SERVER"
+  bashrc_add "export NTFY_TOPIC=$NTFY_TOPIC"
   run omp install npm:omp-ntfy
 }
 

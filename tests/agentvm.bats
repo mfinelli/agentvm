@@ -312,6 +312,23 @@ STUB
   : > "$GIT_LOG"
 }
 
+# component_ntfy's only external step is `omp install`, so the binary is stubbed
+# the same way as git. A shell function would work too, but shellcheck sees a
+# function defined here and never called (the component lives in the sourced
+# script) as dead code -- SC2317 before 0.11, SC2329 after -- so a fake binary
+# keeps the suite clean on any shellcheck version.
+stub_omp() {
+  mkdir -p "$BATS_TEST_TMPDIR/bin"
+  cat > "$BATS_TEST_TMPDIR/bin/omp" << 'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$OMP_LOG"
+STUB
+  chmod +x "$BATS_TEST_TMPDIR/bin/omp"
+  export PATH="$BATS_TEST_TMPDIR/bin:$PATH"
+  export OMP_LOG="$BATS_TEST_TMPDIR/omp.log"
+  : > "$OMP_LOG"
+}
+
 @test "component_repos expands owner/name to a github https url" {
   set -e
   stub_git
@@ -435,4 +452,63 @@ STUB
   [ "$status" -eq 0 ]
   [[ $output == *"dry run complete, nothing was changed"* ]]
   [[ $output != *"done: applied"* ]]
+}
+
+# ---------------------------------------------------------------- ntfy config
+
+# omp-ntfy resolves `{...env defaults, ...saved}`: the saved file wins over
+# NTFY_TOPIC/NTFY_SERVER, and the plugin writes a *random* topic plus
+# https://ntfy.sh the first time it runs without one. Exporting the variables
+# alone therefore stopped taking effect as soon as the plugin had run once.
+@test "component_ntfy seeds the plugin config file the plugin actually reads" {
+  set -e
+  export HOME="$BATS_TEST_TMPDIR/home"
+  NTFY_SERVER=http://192.168.123.1:8081
+  NTFY_TOPIC=omp
+  stub_omp
+
+  component_ntfy
+
+  local cfg="$HOME/.omp/agent/omp-ntfy.json"
+  [ -f "$cfg" ]
+  # the plugin parses this as JSON and spreads it over its defaults, so the keys
+  # and their types matter, not just the text
+  [ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["topic"])' "$cfg")" = omp ]
+  [ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["server"])' "$cfg")" = http://192.168.123.1:8081 ]
+  [ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["maxTextLength"])' "$cfg")" = 350 ]
+
+  # the exports stay, for a shell whose omp has not read the file yet
+  grep -qxF 'export NTFY_TOPIC=omp' "$HOME/.bashrc"
+  grep -qxF 'export NTFY_SERVER=http://192.168.123.1:8081' "$HOME/.bashrc"
+  grep -q 'install npm:omp-ntfy' "$OMP_LOG"
+}
+
+@test "component_ntfy leaves an unchanged config file alone on a re-run" {
+  set -e
+  export HOME="$BATS_TEST_TMPDIR/home"
+  NTFY_SERVER=http://192.168.123.1:8081
+  NTFY_TOPIC=omp
+  stub_omp
+
+  component_ntfy
+  local cfg="$HOME/.omp/agent/omp-ntfy.json" before
+  before=$(stat -c '%i %Y' "$cfg")
+  sleep 1
+  component_ntfy
+  # install_config compares first, so a re-run must not rewrite the file
+  [ "$(stat -c '%i %Y' "$cfg")" = "$before" ]
+}
+
+@test "AGENTVM_NTFY_TOPIC and _SERVER override the defaults" {
+  set -e
+  export HOME="$BATS_TEST_TMPDIR/home"
+  NTFY_SERVER=https://ntfy.example.com
+  NTFY_TOPIC=omp-ci-7f3a91
+  stub_omp
+
+  component_ntfy
+
+  local cfg="$HOME/.omp/agent/omp-ntfy.json"
+  [ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["topic"])' "$cfg")" = omp-ci-7f3a91 ]
+  [ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["server"])' "$cfg")" = https://ntfy.example.com ]
 }

@@ -73,6 +73,23 @@ project_opentower() {
 `apt_extra` is for a package that does not justify its own component yet.
 Promote it to a component when it makes sense.
 
+`npm_global` is the same idea for npm: it records packages that are installed
+with one `npm install -g` after every component has run, and selects `node` so
+that npm and a writable prefix exist:
+
+```bash
+project_agentvm() {
+  use_standard
+  npm_global prettier@3
+}
+```
+
+The install needs no `sudo`: mise's node prefix is user-writable, and the
+binaries land in `~/.local/share/mise/shims`, which `component_node` puts on
+`PATH`. Entries are passed to npm verbatim, so pinning is up to the caller.
+
+`--list` reports them as `npm packages: prettier@3`.
+
 ### Components
 
 Each component is one `component_<name>` function. `COMPONENTS` is the registry,
@@ -439,10 +456,10 @@ Two defaults worth knowing:
 
 1. Add a `project_<name>` function next to the others, starting from
    `use_standard` and adding what the project needs.
-2. If it needs a new package that is genuinely project-specific, use
-   `apt_extra`. If it needs a new piece of tooling, add a `component_<name>`,
-   register it in `COMPONENTS` in the right position, and add any `DEPENDS`
-   edges.
+2. If it needs a new package that is genuinely project-specific, use `apt_extra`
+   for apt or `npm_global` for a global npm tool. If it needs a new piece of
+   tooling, add a `component_<name>`, register it in `COMPONENTS` in the right
+   position, and add any `DEPENDS` edges.
 
 Name the VM `omp-<name>` and the project function is picked up automatically.
 

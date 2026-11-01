@@ -22,7 +22,9 @@ set -euo pipefail
 # - `project_<name>` functions declare what they want via `use`, listing every
 #   component they need in full. Order inside a project does not matter.
 #   A one-off package that does not deserve a component goes in `apt_extra`;
-#   promote it to a component once a second project needs it.
+#   promote it to a component once a second project needs it. `npm_global` is
+#   the same idea for npm packages installed with `npm install -g`, and pulls
+#   in the `node` component.
 # - The VM hostname is `omp-PROJECT`, so `omp-agentvm` picks `project_agentvm`.
 #   AGENTVM_PROJECT overrides the detection.
 #
@@ -95,6 +97,8 @@ COMPONENTS=(
 declare -A KNOWN=() WANTED=() DECLARED=()
 # packages a single project needs that are not worth their own component
 EXTRA_PKGS=()
+# npm packages installed globally, in node's mise prefix
+NPM_GLOBAL=()
 
 # ---------------------------------------------------------------------------
 # secrets
@@ -208,6 +212,7 @@ use_standard() {
 
 project_agentvm() {
   use_standard
+  npm_global prettier@3
 }
 
 project_opentower() {
@@ -334,6 +339,24 @@ _want() {
 # Same idea as `use`, but for things that do not deserve a component yet.
 apt_extra() {
   EXTRA_PKGS+=("$@")
+}
+
+# Declare npm packages this project needs globally, installed with one
+# `npm install -g` once every component has run.
+#
+# This is `apt_extra` for npm, and it is the right place for a tool a project
+# needs but no component should own.
+#
+# It selects `node`, because a global install has nowhere to go without it.
+# mise's node prefix is user-writable, so the install needs no sudo and the
+# binaries land in ~/.local/share/mise/shims, which component_node puts on
+# PATH. Entries go to npm verbatim, so pin inline (`prettier@3`) when
+# necessary.
+npm_global() {
+  # `_want`, not `use`: node is a requirement of these packages, so `--list`
+  # should show it as a dependency rather than something the project named.
+  _want node
+  NPM_GLOBAL+=("$@")
 }
 
 # Fill REQUIRED_SECRETS from the components that are actually selected. Called
@@ -885,6 +908,9 @@ main() {
     if ((${#EXTRA_PKGS[@]})); then
       echo "extra packages: ${EXTRA_PKGS[*]}"
     fi
+    if ((${#NPM_GLOBAL[@]})); then
+      echo "npm packages: ${NPM_GLOBAL[*]}"
+    fi
     if ((${#REQUIRED_SECRETS[@]})); then
       echo "secrets: ${REQUIRED_SECRETS[*]}"
     fi
@@ -901,6 +927,12 @@ main() {
   for c in "${order[@]}"; do
     component_$c
   done
+
+  # npm_global packages come last: npm only exists once component_node has run,
+  # and mise's shims (where the binaries land) only exist after that too.
+  if ((${#NPM_GLOBAL[@]})); then
+    run npm install -g "${NPM_GLOBAL[@]}"
+  fi
 
   if ((${#EXTRA_PKGS[@]})); then
     apt_install "${EXTRA_PKGS[@]}"

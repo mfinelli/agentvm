@@ -543,6 +543,18 @@ component_screen() {
   #
   # There is no UTC escape: '%c' is local time, so a backtick runs date(1).
   # The two 60s numbers are the output lifespan and the redraw interval.
+  #
+  # 'so'/'se' are remapped to italic because screen 4.9 (Debian trixie) has no
+  # italic attribute: ansi.c's rendition table maps SGR 3 onto standout, and
+  # standout is then emitted with the *outer* terminal's 'smso', which for
+  # xterm-256color is '\E[7m'. Italic text therefore came out as reverse video
+  # -- grey background, black foreground. Pointing 'so' at '\E[3m' is what makes
+  # SGR 3 reach the terminal as italic. Only the outer terminal is affected:
+  # SGR 7 (genuine reverse video) still goes through 'mr'.
+  #
+  # Truecolor is not fixable here. 4.9 stores colour as an 8-bit pair and only
+  # parses '38;5;N'; '38;2;r;g;b' matches no case and is dropped, and the
+  # 'truecolor' command does not exist before screen 5.0. See the README.
   install_config "$HOME/.screenrc" << 'EOF'
 startup_message off
 vbell off
@@ -556,6 +568,12 @@ backtick 1 60 60 /bin/date -u +%H:%MZ
 
 hardstatus alwayslastline
 hardstatus string '%{= kG}[%{G}%H%{g}][%{= rW}%n %t%{= kG}][%{B}%S %{W}UTC %1`%{g}]%?%E%{= rW}[CMD]%{= kG}%:%=%{= kw}[%W]%{k}'
+
+# 'so' is what screen 4.9 emits for SGR 3 (its rendition table maps italic onto
+# standout); pointing it at '\E[3m' is what makes italic text actually italic
+# instead of reverse video. Genuine reverse video (SGR 7) uses 'mr' and is
+# unaffected.
+termcapinfo * so=\E[3m:se=\E[23m
 
 # A shell in every window: omp may not be installed (or may be broken), and
 # the point is to choose what runs in each window anyway.

@@ -452,6 +452,35 @@ Two defaults worth knowing:
   this for a detached session — so `agent` is listed last to make it the one you
   attach to.
 
+### Italic and truecolor
+
+Two screen limits, only one of which is a config problem.
+
+Italic **works**: the screenrc contains
+
+```
+termcapinfo * so=\E[3m:se=\E[23m
+```
+
+The reason it is needed is that screen 4.9 (Debian trixie) has no italic
+attribute at all. Its rendition table maps SGR 3 onto _standout_, and standout
+is emitted with the outer terminal's `smso`, which `xterm-256color` defines as
+`\E[7m`. Italic text therefore rendered as reverse video — grey background,
+black foreground. Repointing `so` at `\E[3m` is what lets SGR 3 reach the
+terminal as italic. Genuine reverse video (SGR 7) goes through `mr` and still
+works.
+
+Truecolor does **not** work, and cannot be fixed from `.screenrc`. screen 4.9
+stores colour as an 8-bit pair and parses only `38;5;N`; a `38;2;r;g;b` sequence
+matches no case and is dropped, so a truecolor application silently falls back
+to the terminal's default colour. The `truecolor on` command that enables 24-bit
+pass-through was added in screen 5.0, which is in Debian forky but not trixie or
+trixie-backports.
+
+Revisit this once Debian 14 (forky) is released and the base image has been
+upgraded: `component_screen` needs `truecolor on` and the `termcapinfo` line
+becomes redundant.
+
 ## Adding a project
 
 1. Add a `project_<name>` function next to the others, starting from

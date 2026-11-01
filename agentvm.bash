@@ -120,20 +120,20 @@ NPM_GLOBAL=()
 SECRET_DIR=${AGENTVM_SECRET_DIR:-/dev/shm/secrets}
 
 declare -A SECRET_DEST=(
-  [git-name]=""
-  [git-email]=""
+  ["git-name"]=""
+  ["git-email"]=""
   # Tokens are installed per host under ~/.config/git/tokens/<host>, so a
   # second provider (gitlab, ...) gets its own file. The host is part of the
   # path, so the credential helper can be scoped to exactly that host.
-  [github-token]="$HOME/.config/git/tokens/github.com"
-  [ollama-token]=""
+  ["github-token"]="$HOME/.config/git/tokens/github.com"
+  ["ollama-token"]=""
 )
 
 declare -A SECRET_USERS=(
-  [git-name]='git'
-  [git-email]='git'
-  [github-token]='git'
-  [ollama-token]='omp'
+  ["git-name"]='git'
+  ["git-email"]='git'
+  ["github-token"]='git'
+  ["ollama-token"]='omp'
 )
 
 REQUIRED_SECRETS=()
@@ -420,7 +420,7 @@ secret_value() {
   # Reject an empty secret before deleting it. Consuming first would delete the
   # evidence, so a retry would fail at the preflight instead of showing the same
   # error, and the operator would have no file left to inspect.
-  if ((! DRY_RUN)) && [[ ! -s $SECRET_DIR/$s ]]; then
+  if ((DRY_RUN == 0)) && [[ ! -s $SECRET_DIR/$s ]]; then
     echo "secret $s is empty" >&2
     exit 3
   fi
@@ -459,7 +459,7 @@ component_git() {
   local git_name git_email token
   secret_value git-name git_name
   secret_value git-email git_email
-  token=${SECRET_DEST[github-token]}
+  token=${SECRET_DEST["github-token"]}
   take_secret github-token
   ((DRY_RUN)) && return 0
 
@@ -651,7 +651,7 @@ print(json.dumps({"version":1,"credentials":[{"provider":"ollama-cloud",
   "credential":{"type":"api_key","key":os.environ["AGENTVM_TOKEN"]}}]}))')
   unset token
   log "+ omp auth import -"
-  if ((! DRY_RUN)); then
+  if ((DRY_RUN == 0)); then
     printf '%s' "$creds" | omp auth import -
   fi
   unset creds
@@ -764,7 +764,7 @@ update_agentvm() {
 
   # The running copy is this file, which the pull just changed underneath us.
   # Say so only when it actually moved, so a no-op `--update` stays quiet.
-  if [[ $before != "$after" ]] && ((! DRY_RUN)) &&
+  if [[ $before != "$after" ]] && ((DRY_RUN == 0)) &&
     [[ $(readlink -f "$0") == "$(readlink -f "$dir/agentvm.bash")" ]]; then
     log "note: $dir/agentvm.bash moved to $after; the new version runs next time" >&2
   fi
@@ -785,7 +785,7 @@ resolved() {
 
 # Every required secret must be on disk before anything is installed.
 preflight_secrets() {
-  if ((! ${#REQUIRED_SECRETS[@]})); then
+  if ((${#REQUIRED_SECRETS[@]} == 0)); then
     return 0
   fi
   local s missing=()

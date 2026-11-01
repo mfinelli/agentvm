@@ -92,6 +92,7 @@ COMPONENTS=(
   ntfy
   rea
   agentvm
+  repos
 )
 
 declare -A KNOWN=() WANTED=() DECLARED=()
@@ -101,6 +102,8 @@ EXTRA_PKGS=()
 NPM_GLOBAL=()
 # mise tools installed globally, for anything no apt suite carries
 MISE_GLOBAL=()
+# repositories this project works on, cloned into ~/src by component_repos
+REPOS=()
 
 # ---------------------------------------------------------------------------
 # secrets
@@ -217,6 +220,7 @@ project_agentvm() {
   apt_extra shellcheck shfmt
   npm_global prettier@3
   mise_global "aqua:rhysd/actionlint@1"
+  repo mfinelli/agentvm mfinelli/dotfiles
 }
 
 project_opentower() {
@@ -379,6 +383,22 @@ mise_global() {
   # should show it as a dependency rather than something the project named.
   _want mise
   MISE_GLOBAL+=("$@")
+}
+
+# Declare repositories this project works on, cloned into ~/src by
+# component_repos.
+#
+# Either a full URL (https or ssh) or an `owner/name` shorthand, which expands
+# to https://github.com/owner/name.git.
+repo() {
+  # `_want`, not `use`: the component and git are requirements of the
+  # declaration, so `--list` shows them as dependencies rather than things the
+  # project named. `_want git` is deliberate -- a repository you branch, commit
+  # and push to needs an identity, so it pulls in the git component (and its
+  # secrets) rather than just the package.
+  _want repos
+  _want git
+  REPOS+=("$@")
 }
 
 # Fill REQUIRED_SECRETS from the components that are actually selected. Called
@@ -773,6 +793,46 @@ component_agentvm() {
   ln -sfn "$dir/agentvm.bash" "$link"
 }
 
+# Clone the repositories a project declared with `repo` into ~/src.
+component_repos() {
+  local spec url name dir
+
+  # git comes from DEPENDS via `repo`, but a targeted `--only repos` on a VM
+  # that never ran the git component still needs the binary. Same trade as
+  # component_agentvm: the package, not the component, because the component
+  # also consumes the identity and token secrets.
+  command -v git > /dev/null || apt_install git
+  run mkdir -p "$HOME/src"
+
+  for spec in "${REPOS[@]}"; do
+    case $spec in
+      # anything with a scheme or a scp-style host is a URL already
+      *://* | *@*:*) url=$spec ;;
+      # owner/name is the common case for GitHub, so make it the shorthand
+      *) url="https://github.com/$spec.git" ;;
+    esac
+
+    # Owner/name.git -> name. Also copes with a trailing slash or a bare
+    # https URL without the .git suffix.
+    name=${url%/}
+    name=${name##*/}
+    name=${name%.git}
+
+    dir=$HOME/src/$name
+
+    if [[ -d $dir/.git ]]; then
+      # Existing checkout: update --ff-only so a local branch
+      # the operator is working on isn't merged or rebased under them.
+      run git -C "$dir" pull --ff-only
+    elif [[ -d $dir ]] && [[ -n $(ls -A "$dir") ]]; then
+      echo "$dir exists but is not a git checkout; move it aside to re-clone" >&2
+      exit 1
+    else
+      run git clone "$url" "$dir"
+    fi
+  done
+}
+
 # Re-point an existing checkout at the tip of the branch. `--update` is for the
 # case where the VM was built from an older revision and you want the script
 # that is on disk to be the current one, without re-running a component.
@@ -958,6 +1018,9 @@ main() {
     fi
     if ((${#MISE_GLOBAL[@]})); then
       echo "mise tools: ${MISE_GLOBAL[*]}"
+    fi
+    if ((${#REPOS[@]})); then
+      echo "repos: ${REPOS[*]}"
     fi
     if ((${#REQUIRED_SECRETS[@]})); then
       echo "secrets: ${REQUIRED_SECRETS[*]}"

@@ -104,6 +104,21 @@ project_agentvm() {
 
 `--list` reports them as `mise tools: aqua:rhysd/actionlint@1`.
 
+`repo` declares the repositories the project actually works on and are cloned
+into `~/src`:
+
+```bash
+project_agentvm() {
+  use_standard
+  repo mfinelli/agentvm
+}
+```
+
+`owner/name` is shorthand for `https://github.com/owner/name.git`; a full https
+or ssh URL is used verbatim, and the directory name comes from the URL.
+
+`--list` reports them as `repos: mfinelli/agentvm`.
+
 ### Components
 
 Each component is one `component_<name>` function. `COMPONENTS` is the registry,
@@ -111,7 +126,7 @@ and **its order is the execution order**:
 
 ```
 base editor git bash screen fonts java ghidra buildtools re rust dosbox \
-  mise node omp ntfy rea agentvm
+  mise node omp ntfy rea agentvm repos
 ```
 
 Declaring a dependency doesn't reorder anything; it only widens what a project
@@ -431,6 +446,7 @@ that was actually stored.
 | `ntfy`       | omp-ntfy plugin, `NTFY_SERVER`/`NTFY_TOPIC`                                                   |
 | `rea`        | `npx rea-agents setup`                                                                        |
 | `agentvm`    | checkout at `~/.agentvm`, symlinked to `~/.local/bin/agentvm`                                 |
+| `repos`      | full clones of `repo` declarations in `~/src`                                                 |
 
 `~/.bashrc` lines are appended idempotently: re-running the script does not
 duplicate them. `~/.screenrc` is written whole, and only when its content
@@ -501,9 +517,10 @@ becomes redundant.
    `use_standard` and adding what the project needs.
 2. If it needs a new package that is genuinely project-specific, use `apt_extra`
    for apt, `npm_global` for a global npm tool, or `mise_global` for something
-   no apt suite carries. If it needs a new piece of tooling, add a
-   `component_<name>`, register it in `COMPONENTS` in the right position, and
-   add any `DEPENDS` edges.
+   no apt suite carries. A repository the project works on goes in `repo`, which
+   clones it into `~/src` and selects the `git` component. If it needs a new
+   piece of tooling, add a `component_<name>`, register it in `COMPONENTS` in
+   the right position, and add any `DEPENDS` edges.
 
 Name the VM `omp-<name>` and the project function is picked up automatically.
 

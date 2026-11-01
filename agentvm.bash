@@ -99,6 +99,8 @@ declare -A KNOWN=() WANTED=() DECLARED=()
 EXTRA_PKGS=()
 # npm packages installed globally, in node's mise prefix
 NPM_GLOBAL=()
+# mise tools installed globally, for anything no apt suite carries
+MISE_GLOBAL=()
 
 # ---------------------------------------------------------------------------
 # secrets
@@ -214,6 +216,7 @@ project_agentvm() {
   use_standard
   apt_extra shellcheck shfmt
   npm_global prettier@3
+  mise_global "aqua:rhysd/actionlint@1"
 }
 
 project_opentower() {
@@ -358,6 +361,24 @@ npm_global() {
   # should show it as a dependency rather than something the project named.
   _want node
   NPM_GLOBAL+=("$@")
+}
+
+# Declare mise-managed tools this project needs, installed with one
+# `mise use -g` after every component has run.
+#
+# This is `npm_global` for anything mise can install. It exists for tools that
+# are in no apt suite, where the alternative is a pinned download and a
+# checksum.
+#
+# The version is passed through verbatim, so pin it the same way you would for
+# npm_global (`actionlint@1` follows the 1.x line). `mise use -g` writes the
+# pin to the global config and is idempotent, so a re-run is a no-op rather
+# than an upgrade.
+mise_global() {
+  # `_want`, not `use`: mise is a requirement of these tools, so `--list`
+  # should show it as a dependency rather than something the project named.
+  _want mise
+  MISE_GLOBAL+=("$@")
 }
 
 # Fill REQUIRED_SECRETS from the components that are actually selected. Called
@@ -935,6 +956,9 @@ main() {
     if ((${#NPM_GLOBAL[@]})); then
       echo "npm packages: ${NPM_GLOBAL[*]}"
     fi
+    if ((${#MISE_GLOBAL[@]})); then
+      echo "mise tools: ${MISE_GLOBAL[*]}"
+    fi
     if ((${#REQUIRED_SECRETS[@]})); then
       echo "secrets: ${REQUIRED_SECRETS[*]}"
     fi
@@ -956,6 +980,12 @@ main() {
   # and mise's shims (where the binaries land) only exist after that too.
   if ((${#NPM_GLOBAL[@]})); then
     run npm install -g "${NPM_GLOBAL[@]}"
+  fi
+
+  # mise_global tools likewise: component_mise is what puts mise on PATH and
+  # puts its shims directory, where these binaries land, on PATH.
+  if ((${#MISE_GLOBAL[@]})); then
+    run mise use -g "${MISE_GLOBAL[@]}"
   fi
 
   if ((${#EXTRA_PKGS[@]})); then

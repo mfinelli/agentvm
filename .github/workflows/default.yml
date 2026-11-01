@@ -23,4 +23,11 @@ jobs:
       - run: sudo apt-get update
       - run: sudo apt-get install -y just shfmt shellcheck
 
+      - uses: jdx/mise-action@v5
+        with:
+          install: false
+      - run: mise use -g "aqua:rhysd/actionlint@1"
+
       - run: just check
+        env:
+          JUST_UNSTABLE: "true" # needed for --fmt

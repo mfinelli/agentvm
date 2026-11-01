@@ -90,6 +90,20 @@ binaries land in `~/.local/share/mise/shims`, which `component_node` puts on
 
 `--list` reports them as `npm packages: prettier@3`.
 
+`mise_global` is the same idea for tools no apt suite carries, installed with
+one `mise use -g` after every component has run:
+
+```bash
+project_agentvm() {
+  use_standard
+  apt_extra shellcheck shfmt
+  npm_global prettier@3
+  mise_global "aqua:rhysd/actionlint@1"
+}
+```
+
+`--list` reports them as `mise tools: aqua:rhysd/actionlint@1`.
+
 ### Components
 
 Each component is one `component_<name>` function. `COMPONENTS` is the registry,
@@ -486,9 +500,10 @@ becomes redundant.
 1. Add a `project_<name>` function next to the others, starting from
    `use_standard` and adding what the project needs.
 2. If it needs a new package that is genuinely project-specific, use `apt_extra`
-   for apt or `npm_global` for a global npm tool. If it needs a new piece of
-   tooling, add a `component_<name>`, register it in `COMPONENTS` in the right
-   position, and add any `DEPENDS` edges.
+   for apt, `npm_global` for a global npm tool, or `mise_global` for something
+   no apt suite carries. If it needs a new piece of tooling, add a
+   `component_<name>`, register it in `COMPONENTS` in the right position, and
+   add any `DEPENDS` edges.
 
 Name the VM `omp-<name>` and the project function is picked up automatically.
 

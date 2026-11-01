@@ -31,3 +31,62 @@ jobs:
       - run: just check
         env:
           JUST_UNSTABLE: "true" # needed for --fmt
+
+  # Runs the actual script end to end in a real Debian trixie container.
+  # `project_default` selects every component, which is the point: one run
+  # covers the whole registry.
+  #
+  # The container needs three things a VM gets for free, all supplied below:
+  #   - DEBIAN_FRONTEND=noninteractive, or debconf blocks on a tty;
+  #   - an apt-get update, because debian:trixie ships an empty
+  #     /var/lib/apt/lists and the script only ever runs `apt-get install`;
+  #   - sudo, which the official image does not include but `apt_install` calls.
+  #
+  # Secrets are dummies: the components only need *a* value, and this run is
+  # never going to talk to GitHub or Ollama.
+  integration:
+    runs-on: ubuntu-latest
+    container:
+      image: debian:trixie
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      AGENTVM_PROJECT: default
+    steps:
+      - run: apt-get update
+      - run: apt-get install -y sudo ca-certificates
+
+      - uses: actions/checkout@v7
+
+      # Dummy secrets exactly where vm-provision would put them. The preflight
+      # requires all four for project_default, and component values are never
+      # checked, so any non-empty string works. The github-token must not look
+      # like an auth export (`{...}`), which component_omp rejects.
+      - name: Stub secrets
+        run: |
+          mkdir -p /dev/shm/secrets
+          for s in git-name git-email github-token ollama-token; do
+            printf 'ci-dummy-%s\n' "$s" > "/dev/shm/secrets/$s"
+          done
+          chmod 600 /dev/shm/secrets/*
+
+      - run: ./agentvm.bash
+
+      # Exit 0 is not proof. These assert the things the run exists to produce:
+      # the tools are on disk, and the secrets were consumed (a leftover means
+      # a component never read one).
+      - name: Verify the result
+        run: |
+          set -eux
+          ~/.local/bin/omp --version
+          ~/.local/bin/mise --version
+          ~/.local/share/mise/shims/node --version
+          rustup --version
+          test -x ~/.local/bin/agentvm
+          test -d ~/.agentvm/.git
+          test "$(git -C ~/.agentvm rev-parse --is-shallow-repository)" = false
+          grep -q 'termcapinfo \* so=' ~/.screenrc
+          grep -q 'BASH_IT' ~/.bashrc
+          if [ -d /dev/shm/secrets ]; then
+            echo "unconsumed secrets: $(ls /dev/shm/secrets)" >&2
+            exit 1
+          fi

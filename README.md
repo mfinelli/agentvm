@@ -248,11 +248,13 @@ declare -A SECRET_DEST=(          # where the file is installed; "" = a value
   [git-name]=""
   [git-email]=""
   [github-token]="$HOME/.config/git/tokens/github.com"
+  [ollama-token]=""
 )
 declare -A SECRET_USERS=(         # which component consumes it
   [git-name]='git'
   [git-email]='git'
   [github-token]='git'
+  [ollama-token]='omp'
 )
 ```
 

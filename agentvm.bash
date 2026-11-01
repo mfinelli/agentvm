@@ -60,6 +60,17 @@ AGENTVM_LINK=${AGENTVM_LINK:-$HOME/.local/bin/agentvm}
 # where component_agentvm keeps its checkout
 AGENTVM_DIR=${AGENTVM_DIR:-$HOME/.agentvm}
 
+# oh-my-pi settings, applied by component_omp. Values are the ones `omp config
+# list` documents for each key; the composer shape is the "Pi" layout from the
+# first-run picker, and the symbol preset picks the Nerd Font glyph set.
+OMP_SYMBOL_PRESET=${AGENTVM_OMP_SYMBOL_PRESET:-nerd}
+OMP_COMPOSER_SHAPE=${AGENTVM_OMP_COMPOSER_SHAPE:-pi}
+# `system` would follow the terminal's light/dark mode, but omp's first-run
+# picker stores a pair instead, so do the same and make the choice explicit.
+OMP_THEME_DARK=${AGENTVM_OMP_THEME_DARK:-titanium}
+OMP_THEME_LIGHT=${AGENTVM_OMP_THEME_LIGHT:-light}
+OMP_MODEL=${AGENTVM_OMP_MODEL:-ollama-cloud/deepseek-v4.1-flash}
+
 COMPONENTS=(
   base
   editor
@@ -111,12 +122,14 @@ declare -A SECRET_DEST=(
   # second provider (gitlab, ...) gets its own file. The host is part of the
   # path, so the credential helper can be scoped to exactly that host.
   [github-token]="$HOME/.config/git/tokens/github.com"
+  [ollama-token]=""
 )
 
 declare -A SECRET_USERS=(
   [git-name]='git'
   [git-email]='git'
   [github-token]='git'
+  [ollama-token]='omp'
 )
 
 REQUIRED_SECRETS=()
@@ -569,6 +582,70 @@ component_omp() {
   run_sh 'curl -fsSL https://omp.sh/install | sh'
   bashrc_add 'export PATH=~/.local/bin:$PATH'
   path_add "$HOME/.local/bin"
+
+  local token creds
+  secret_value ollama-token token
+  ((DRY_RUN)) && return 0
+
+  # The secret is the bare token. `omp auth import` wants a JSON envelope, and
+  # pasting that envelope into the secret file would otherwise be accepted
+  # silently and stored as the key -- failing later at the first request, far
+  # from the mistake. Reject it here, where the file still exists to inspect.
+  if [[ $token == \{* ]]; then
+    echo "ollama-token looks like an auth export, not a token;" >&2
+    echo "put only the literal API key in it (see: omp auth export)" >&2
+    exit 3
+  fi
+
+  # `omp auth import` takes a versioned envelope, not a bare key=value map, and
+  # merges into the store rather than replacing it. The key goes in on stdin: an
+  # argument would be visible in /proc/<pid>/cmdline to every user on the box.
+  # The envelope is built in python so a key containing a quote or backslash
+  # cannot break the JSON.
+  creds=$(AGENTVM_TOKEN=$token python3 -c 'import json,os
+print(json.dumps({"version":1,"credentials":[{"provider":"ollama-cloud",
+  "credential":{"type":"api_key","key":os.environ["AGENTVM_TOKEN"]}}]}))')
+  unset token
+  log "+ omp auth import -"
+  if ((! DRY_RUN)); then
+    printf '%s' "$creds" | omp auth import -
+  fi
+  unset creds
+
+  omp_configure
+}
+
+# Settings that are normally chosen by hand on first start. `omp config set`
+# writes config.yml itself and is idempotent, so this is safe to run on a VM
+# that is already configured: the last value wins.
+omp_configure() {
+  # The composer/status-line/theme keys are plain strings.
+  local key
+  for key in \
+    "symbolPreset $OMP_SYMBOL_PRESET" \
+    "composer.shape $OMP_COMPOSER_SHAPE" \
+    "theme.dark $OMP_THEME_DARK" \
+    "theme.light $OMP_THEME_LIGHT"; do
+    # shellcheck disable=SC2086 # split into key and value
+    run omp config set $key
+  done
+
+  # modelRoles is a record, so it cannot be set key-by-key ("Unknown setting:
+  # modelRoles.default"). Merge to keep the other roles (smol, slow, plan) that
+  # the operator or a previous run may have pinned.
+  local current merged
+  current=$(omp config get modelRoles --json 2> /dev/null |
+    python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["value"]))' 2> /dev/null) ||
+    current='{}'
+  merged=$(
+    python3 - "$current" "$OMP_MODEL" << 'PY'
+import json, sys
+roles = json.loads(sys.argv[1] or '{}')
+roles['default'] = sys.argv[2]
+print(json.dumps(roles))
+PY
+  )
+  run omp config set modelRoles "$merged"
 }
 
 component_ntfy() {

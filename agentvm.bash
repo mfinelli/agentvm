@@ -430,6 +430,7 @@ secret_value() {
     return 0
   fi
   local -n out=$var
+  # shellcheck disable=SC2034 # assigned through the nameref, read by caller
   out=$(< "$SECRET_DIR/$s")
   rm -f "$SECRET_DIR/$s"
   log "consumed secret $s" >&2
@@ -446,6 +447,7 @@ component_base() {
   apt_install magic-wormhole
   apt_install imagemagick
   apt_install 7zip libarchive-tools unzip
+  apt_install just
 }
 
 component_editor() {
@@ -517,6 +519,7 @@ component_bash() {
   bashrc_add 'export BASH_IT_COMMAND_DURATION=true'
   bashrc_add 'export COMMAND_DURATION_MIN_SECONDS=1'
   # last, so every setting above is in scope when bash-it loads
+  # shellcheck disable=SC2016 # literal text for ~/.bashrc, expanded at login
   bashrc_add 'source "${BASH_IT?}/bash_it.sh"'
 }
 
@@ -624,6 +627,8 @@ component_node() {
 
 component_omp() {
   run_sh 'curl -fsSL https://omp.sh/install | sh'
+  # Literal text for ~/.bashrc: a login shell expands $PATH, not this script.
+  # shellcheck disable=SC2016
   bashrc_add 'export PATH=~/.local/bin:$PATH'
   path_add "$HOME/.local/bin"
 
@@ -944,7 +949,7 @@ main() {
     log "project $PROJECT: ${order[*]}"
   fi
   for c in "${order[@]}"; do
-    component_$c
+    "component_$c"
   done
 
   # npm_global packages come last: npm only exists once component_node has run,
@@ -967,5 +972,3 @@ main() {
 }
 
 main "$@"
-
-exit 0

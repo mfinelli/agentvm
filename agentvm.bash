@@ -483,7 +483,7 @@ secret_value() {
 
 component_base() {
   apt_install curl rsync wget
-  apt_install htop bat
+  apt_install bat htop jq
   apt_install python3 python3-pip
   apt_install magic-wormhole
   apt_install imagemagick

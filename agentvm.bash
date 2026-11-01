@@ -435,7 +435,7 @@ component_git() {
   local git_name git_email token
   secret_value git-name git_name
   secret_value git-email git_email
-  token=${SECRET_DEST[github - token]}
+  token=${SECRET_DEST[github-token]}
   take_secret github-token
   ((DRY_RUN)) && return 0
 

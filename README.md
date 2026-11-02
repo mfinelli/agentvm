@@ -41,12 +41,13 @@ or the secrets will be discarded before the script can read them.
 VMs are named `omp-PROJECT`. The script strips the prefix and runs
 `project_PROJECT`:
 
-| Hostname        | Project function               |
-| --------------- | ------------------------------ |
-| `omp-agentvm`   | `project_agentvm`              |
-| `omp-opentower` | `project_opentower`            |
-| `omp-recueil`   | `project_recueil`              |
-| anything else   | `project_default` (everything) |
+| Hostname          | Project function               |
+| ----------------- | ------------------------------ |
+| `omp-agentvm`     | `project_agentvm`              |
+| `omp-opentower`   | `project_opentower`            |
+| `omp-recueil`     | `project_recueil`              |
+| `omp-musicrename` | `project_musicrename`          |
+| anything else     | `project_default` (everything) |
 
 `AGENTVM_PROJECT` overrides the detection, which is useful when testing or when
 the hostname does not follow the convention:
@@ -75,6 +76,13 @@ project_recueil() {
   use buildtools go node docker
   mise_global sqlc@1
   repo mfinelli/recueil
+}
+
+project_musicrename() {
+  use_standard
+  use buildtools go
+  apt_extra ffmpeg rsgain scdoc
+  repo mfinelli/musicrename
 }
 ```
 

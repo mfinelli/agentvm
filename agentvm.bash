@@ -247,6 +247,13 @@ project_recueil() {
   repo mfinelli/recueil
 }
 
+project_musicrename() {
+  use_standard
+  use buildtools go
+  apt_extra ffmpeg rsgain scdoc
+  repo mfinelli/musicrename
+}
+
 # Anything unrecognised gets everything.
 project_default() {
   use "${COMPONENTS[@]}"
